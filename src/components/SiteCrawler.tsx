@@ -83,6 +83,7 @@ export function SiteCrawler() {
   const [selectedArticleIndex, setSelectedArticleIndex] = useState<number | null>(null);
   const [selectedArticles, setSelectedArticles] = useState<Set<number>>(new Set());
   const [isExportDialogOpen, setIsExportDialogOpen] = useState(false);
+  const [exportProgress, setExportProgress] = useState<{current: number; total: number} | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -141,6 +142,8 @@ export function SiteCrawler() {
     );
 
     try {
+      setExportProgress({ current: 0, total: selectedArticlesList.length });
+      
       const response = await fetch('/api/export', {
         method: 'POST',
         headers: {
@@ -156,10 +159,75 @@ export function SiteCrawler() {
         throw new Error('导出失败');
       }
 
-      // 获取二进制数据
-      const blob = await response.blob();
-      
-      // 创建下载链接
+      if (!response.body) {
+        throw new Error('无法读取响应内容');
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let epubData: number[] = [];
+      let buffer = ''; // 用于存储未完成的消息
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        // 将新数据添加到缓冲区
+        buffer += decoder.decode(value, { stream: true });
+
+        // 处理完整的消息
+        const lines = buffer.split('\n');
+        // 保存最后一行（可能不完整）
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          if (!line.trim()) continue;
+
+          try {
+            const data = JSON.parse(line);
+            
+            switch (data.type) {
+              case 'progress':
+                setExportProgress({
+                  current: data.current + 1,
+                  total: data.total
+                });
+                break;
+              
+              case 'complete':
+                epubData = data.data;
+                break;
+              
+              case 'error':
+                throw new Error(data.message);
+            }
+          } catch (e) {
+            console.error('解析消息失败:', e, '原始消息:', line);
+            continue; // 跳过错误的消息，继续处理下一条
+          }
+        }
+      }
+
+      // 处理最后可能剩余的数据
+      if (buffer.trim()) {
+        try {
+          const data = JSON.parse(buffer);
+          if (data.type === 'complete') {
+            epubData = data.data;
+          } else if (data.type === 'error') {
+            throw new Error(data.message);
+          }
+        } catch (e) {
+          console.error('解析最后的消息失败:', e);
+        }
+      }
+
+      if (!epubData.length) {
+        throw new Error('未收到有效的电子书数据');
+      }
+
+      // 创建并下载文件
+      const blob = new Blob([new Uint8Array(epubData)], { type: 'application/epub+zip' });
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -171,7 +239,10 @@ export function SiteCrawler() {
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
     } catch (err) {
+      console.error('导出失败:', err);
       setError(err instanceof Error ? err.message : '导出失败');
+    } finally {
+      setExportProgress(null);
     }
   };
 
@@ -333,6 +404,27 @@ export function SiteCrawler() {
         onClose={() => setIsExportDialogOpen(false)}
         onExport={handleExport}
       />
+
+      {exportProgress && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white p-6 rounded-lg shadow-xl max-w-md w-full mx-4">
+            <h3 className="text-lg font-semibold mb-4">正在导出电子书</h3>
+            <div className="space-y-2">
+              <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+                <div 
+                  className="h-full bg-blue-600 transition-all duration-300"
+                  style={{ 
+                    width: `${(exportProgress.current / exportProgress.total) * 100}%` 
+                  }}
+                />
+              </div>
+              <p className="text-sm text-gray-600 text-center">
+                正在处理第 {exportProgress.current} / {exportProgress.total} 篇文章
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 } 

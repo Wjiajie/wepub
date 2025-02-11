@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import epubGen from 'epub-gen-memory';
 import { JSDOM } from 'jsdom';
+import katex from 'katex';
 
 interface Article {
   title: string;
@@ -17,10 +18,293 @@ interface ExportRequest {
   }[];
 }
 
-// 处理文章内容中的图片和代码块
+// 公式处理策略接口
+interface FormulaStrategy {
+  detect(element: Element | string): boolean;
+  convert(element: Element | string, displayMode: boolean): string;
+}
+
+// KaTeX 公式处理策略
+class KaTeXStrategy implements FormulaStrategy {
+  detect(element: Element | string): boolean {
+    if (typeof element === 'string') return false;
+    const isKatex = element.classList.contains('katex') || element.classList.contains('katex-display');
+    if (isKatex) {
+      console.log('\n[KaTeX 检测] 发现 KaTeX 公式:');
+      console.log('- 元素类名:', element.className);
+      console.log('- 元素内容:', element.outerHTML.slice(0, 200) + '...');
+    }
+    return isKatex;
+  }
+
+  convert(element: Element, displayMode: boolean): string {
+    try {
+      console.log('\n[KaTeX 转换] 开始处理:');
+      console.log('- 显示模式:', displayMode ? '块级' : '行内');
+
+      // 提取所有 SVG 元素
+      const svgElements = element.querySelectorAll('svg');
+      console.log('- 找到 SVG 元素数量:', svgElements.length);
+
+      if (svgElements.length === 0) {
+        throw new Error('未找到 SVG 元素');
+      }
+
+      // 提取 KaTeX 生成的样式
+      const styleElement = element.querySelector('style');
+      const katexStyles = styleElement ? styleElement.textContent : '';
+      console.log('- 是否包含样式:', styleElement ? '是' : '否');
+
+      // 处理每个 SVG 元素
+      let combinedSvg = '';
+      svgElements.forEach((svgElement) => {
+        // 获取 SVG 的尺寸
+        const width = svgElement.getAttribute('width');
+        const height = svgElement.getAttribute('height');
+        
+        // 设置 viewBox 以确保 SVG 正确缩放
+        if (!svgElement.hasAttribute('viewBox') && width && height) {
+          svgElement.setAttribute('viewBox', `0 0 ${parseFloat(width)} ${parseFloat(height)}`);
+        }
+        
+        // 确保 SVG 具有正确的命名空间
+        svgElement.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+        svgElement.setAttribute('xmlns:xlink', 'http://www.w3.org/1999/xlink');
+        
+        // 将样式嵌入到 SVG 中
+        const existingDefs = svgElement.querySelector('defs') || document.createElement('defs');
+        existingDefs.innerHTML += `<style>${katexStyles}</style>`;
+        if (!svgElement.querySelector('defs')) {
+          svgElement.insertBefore(existingDefs, svgElement.firstChild);
+        }
+
+        // 确保所有类名都被保留
+        const originalClasses = Array.from(svgElement.classList);
+        originalClasses.forEach(className => {
+          if (!className.includes('katex')) {
+            svgElement.classList.add(className);
+          }
+        });
+
+        combinedSvg += svgElement.outerHTML;
+      });
+
+      // 设置容器样式
+      const containerStyle = displayMode
+        ? 'display: block; margin: 1em auto; text-align: center;'
+        : 'display: inline-block; vertical-align: middle; line-height: 0;';
+
+      console.log('[公式转换] 成功转换为 SVG');
+      
+      // 返回包含所有 SVG 的容器
+      return displayMode
+        ? `<div class="math-block" style="${containerStyle}">${combinedSvg}</div>`
+        : `<span class="math-inline" style="${containerStyle}">${combinedSvg}</span>`;
+
+    } catch (error) {
+      console.error('[KaTeX 转换] 错误:', error);
+      return element.outerHTML;
+    }
+  }
+}
+
+// MathJax 公式处理策略
+class MathJaxStrategy implements FormulaStrategy {
+  detect(element: Element | string): boolean {
+    if (typeof element === 'string') return false;
+    const isMathML = element.tagName.toLowerCase() === 'math' ||
+                     element.querySelector('math') !== null;
+    if (isMathML) {
+      console.log('\n[MathML 检测] 发现 MathML 公式:');
+      console.log('- 元素标签:', element.tagName);
+      console.log('- 是否包含 LaTeX 注解:', element.querySelector('annotation[encoding="application/x-tex"]') !== null);
+    }
+    return isMathML;
+  }
+
+  convert(element: Element, displayMode: boolean): string {
+    try {
+      console.log('\n[MathML 转换] 开始处理:');
+      console.log('- 显示模式:', displayMode ? '块级' : '行内');
+
+      // 1. 首先尝试从 MathML 中提取 LaTeX
+      const mathElement = element.tagName.toLowerCase() === 'math' ? 
+        element : element.querySelector('math');
+      
+      if (!mathElement) {
+        throw new Error('未找到 math 元素');
+      }
+
+      // 2. 获取显示模式
+      const isDisplayBlock = mathElement.getAttribute('display') === 'block';
+      
+      // 3. 尝试获取 LaTeX 注解
+      const annotation = mathElement.querySelector('annotation[encoding="application/x-tex"]');
+      if (annotation) {
+        const latex = annotation.textContent;
+        console.log('- 提取到 LaTeX:', latex);
+        
+        if (latex) {
+          // 使用 LaTeX 策略进行转换
+          return new LaTeXStrategy().convert(latex, isDisplayBlock || displayMode);
+        }
+      }
+
+      throw new Error('无法提取 LaTeX 注解');
+    } catch (error) {
+      console.error('[MathML 转换] 错误:', error);
+      return element.outerHTML;
+    }
+  }
+}
+
+// LaTeX 文本处理策略
+class LaTeXStrategy implements FormulaStrategy {
+  detect(element: Element | string): boolean {
+    if (typeof element === 'string') {
+      const isLatex = /^\$\$[\s\S]+\$\$$/.test(element) || /^\$[^$\n]+\$$/.test(element);
+      if (isLatex) {
+        console.log('\n[LaTeX 检测] 发现原始 LaTeX 公式:');
+        console.log('- 公式内容:', element);
+      }
+      return isLatex;
+    }
+    return false;
+  }
+
+  convert(element: string | Element, displayMode: boolean): string {
+    try {
+      console.log('\n[LaTeX 转换] 开始处理:');
+      console.log('- 显示模式:', displayMode ? '块级' : '行内');
+
+      const tex = typeof element === 'string'
+        ? element.replace(/^\$\$|\$\$$|^\$|\$$/g, '').trim()
+        : '';
+      
+      console.log('- 提取的 LaTeX:', tex);
+
+      const katexOptions: katex.KatexOptions = {
+        displayMode,
+        output: 'html',
+        throwOnError: false,
+        errorColor: '#cc0000',
+        trust: true,
+        strict: false,
+        maxSize: 1000,
+        maxExpand: 1000
+      };
+
+      const html = katex.renderToString(tex, katexOptions);
+      const tempDom = new JSDOM(`<!DOCTYPE html><div>${html}</div>`);
+      const katexElement = tempDom.window.document.querySelector('.katex');
+      
+      if (katexElement) {
+        return new KaTeXStrategy().convert(katexElement, displayMode);
+      }
+
+      throw new Error('LaTeX 渲染失败');
+    } catch (error) {
+      console.error('[LaTeX 转换] 错误:', error);
+      return `<span class="math-error" style="color: #cc0000;">${element}</span>`;
+    }
+  }
+}
+
+// 公式处理器类
+class FormulaProcessor {
+  private strategies: FormulaStrategy[];
+
+  constructor() {
+    this.strategies = [
+      new KaTeXStrategy(),
+      new MathJaxStrategy(),
+      new LaTeXStrategy()
+    ];
+  }
+
+  processFormula(element: Element | string, displayMode: boolean = false): string {
+    console.log('\n[公式处理] 开始处理新公式:');
+    console.log('- 输入类型:', typeof element === 'string' ? '文本' : 'DOM元素');
+    if (typeof element === 'string') {
+      console.log('- 输入内容:', element);
+    } else {
+      console.log('- 元素标签:', element.tagName);
+      console.log('- 元素类名:', element.className);
+      console.log('- 元素内容:', element.outerHTML.slice(0, 200) + '...');
+    }
+
+    for (const strategy of this.strategies) {
+      if (strategy.detect(element)) {
+        console.log('- 使用策略:', strategy.constructor.name);
+        return strategy.convert(element, displayMode);
+      }
+    }
+
+    console.log('- 未找到匹配的处理策略，保留原始内容');
+    return typeof element === 'string' ? element : element.outerHTML;
+  }
+}
+
+// 处理文章内容中的图片、代码块和数学公式
 async function processContent(content: string): Promise<string> {
+  console.log('\n[内容处理] 开始处理文章内容');
+  console.log('- 原始内容片段:', content.slice(0, 200) + '...');
+
   const dom = new JSDOM(`<!DOCTYPE html><body>${content}</body>`);
   const document = dom.window.document;
+  const formulaProcessor = new FormulaProcessor();
+
+  // 处理 MathML 公式
+  console.log('\n[内容处理] 查找 MathML 公式');
+  const mathElements = document.querySelectorAll('math');
+  console.log('- 找到 MathML 公式数量:', mathElements.length);
+
+  mathElements.forEach((element, index) => {
+    console.log(`\n[内容处理] 处理第 ${index + 1} 个 MathML 公式:`);
+    const svgContent = formulaProcessor.processFormula(
+      element,
+      element.getAttribute('display') === 'block'
+    );
+    const temp = document.createElement('div');
+    temp.innerHTML = svgContent;
+    element.parentNode?.replaceChild(temp.firstChild!, element);
+  });
+
+  // 处理已渲染的数学公式
+  console.log('\n[内容处理] 查找已渲染的公式');
+  const renderedFormulas = document.querySelectorAll('.katex, .katex-display, .MathJax, .MathJax_Display');
+  console.log('- 找到已渲染公式数量:', renderedFormulas.length);
+
+  renderedFormulas.forEach((element, index) => {
+    console.log(`\n[内容处理] 处理第 ${index + 1} 个已渲染公式:`);
+    console.log('- 元素类名:', element.className);
+    const svgContent = formulaProcessor.processFormula(
+      element, 
+      element.classList.contains('katex-display') || element.classList.contains('MathJax_Display')
+    );
+    const temp = document.createElement('div');
+    temp.innerHTML = svgContent;
+    element.parentNode?.replaceChild(temp.firstChild!, element);
+  });
+
+  // 处理原始 LaTeX 文本
+  console.log('\n[内容处理] 查找原始 LaTeX 公式');
+  const text = document.body.innerHTML;
+  
+  // 处理块级公式
+  let processedText = text.replace(/\$\$([\s\S]+?)\$\$/g, (match) => {
+    console.log('\n[内容处理] 发现块级 LaTeX 公式:', match);
+    return formulaProcessor.processFormula(match, true);
+  });
+
+  // 处理行内公式
+  processedText = processedText.replace(/\$([^$\n]+?)\$/g, (match) => {
+    console.log('\n[内容处理] 发现行内 LaTeX 公式:', match);
+    return formulaProcessor.processFormula(match, false);
+  });
+
+  // 更新 DOM 内容
+  document.body.innerHTML = processedText;
 
   // 处理代码块
   const preElements = document.getElementsByTagName('pre');
@@ -40,10 +324,12 @@ async function processContent(content: string): Promise<string> {
     pre.className = pre.className + ' code-block';
   }
 
-  // 清理 HTML
+  // 清理 HTML，但保留数学公式的 HTML 结构
   const cleanHtml = document.body.innerHTML
-    .replace(/&nbsp;/g, ' ') // 替换 &nbsp; 为普通空格
-    .replace(/\u00A0/g, ' '); // 替换 non-breaking space 为普通空格
+    .replace(/&nbsp;/g, ' ')  // 替换 &nbsp; 为普通空格
+    .replace(/\u00A0/g, ' ')  // 替换 non-breaking space 为普通空格
+    .replace(/>\s+</g, '><')  // 移除标签之间的多余空白
+    .replace(/\s{2,}/g, ' '); // 合并多个空格为一个
 
   return cleanHtml;
 }
@@ -59,22 +345,41 @@ export async function POST(req: Request) {
       );
     }
 
-    console.log('开始处理文章，数量:', articles.length);
+    console.log('\n[导出处理] 开始导出电子书');
+    console.log('- 电子书标题:', title);
+    console.log('- 文章数量:', articles.length);
+
+    // 输出每篇文章的详细信息
+    articles.forEach((article, index) => {
+      console.log(`\n[导出处理] 文章 ${index + 1}:`);
+      console.log('- 标题:', article.article.title);
+      console.log('- URL:', article.url);
+      if (article.article.byline) {
+        console.log('- 作者:', article.article.byline);
+      }
+      console.log('- 内容预览:');
+      console.log('----------------------------------------');
+      console.log(article.article.content);
+      console.log('----------------------------------------');
+    });
 
     // 处理所有文章内容
     const chapters = await Promise.all(
-      articles.map(async ({ article, url }) => {
-        console.log('处理文章:', article.title);
+      articles.map(async ({ article, url }, index) => {
+        console.log(`\n[内容处理] 开始处理第 ${index + 1} 篇文章:`, article.title);
         const processedContent = await processContent(article.content);
+        console.log(`[内容处理] 第 ${index + 1} 篇文章处理完成`);
         return {
           title: article.title,
-          content: processedContent + 
-                `<p class="source-url">原文链接：<a href="${url}">${url}</a></p>`
+          content: `${processedContent}
+            <p class="source-url">原文链接：<a href="${url}">${url}</a></p>`,
+          beforeChapter: '<div class="chapter">',
+          afterChapter: '</div>'
         };
       })
     );
 
-    console.log('文章处理完成，开始生成电子书');
+    console.log('所有文章处理完成，开始生成电子书');
 
     // 电子书配置选项
     const options = {
@@ -87,6 +392,9 @@ export async function POST(req: Request) {
       lang: 'zh-CN',
       tocTitle: '目录',
       appendChapterTitles: true,
+      customOpfTemplatePath: null,
+      customNcxTocTemplatePath: null,
+      customHtmlTocTemplatePath: null,
       css: `
         body {
           font-family: "Microsoft YaHei", Arial, sans-serif;
@@ -164,17 +472,93 @@ export async function POST(req: Request) {
         code {
           font-family: inherit;
         }
+        .math-block {
+          margin: 2em 0;
+          text-align: center;
+          overflow-x: auto;
+          padding: 0.5em 0;
+          font-size: 1.1em;
+          -webkit-overflow-scrolling: touch;
+        }
+        .math-inline {
+          display: inline-block;
+          vertical-align: middle;
+          font-size: 1em;
+          margin: 0 0.2em;
+        }
+        .katex {
+          font-size: 1.21em !important;
+          font-family: KaTeX_Main, "Times New Roman", serif !important;
+          text-rendering: auto;
+          text-align: center;
+          max-width: 100%;
+          line-height: 1.4;
+          white-space: nowrap !important;
+        }
+        .katex-display {
+          display: block;
+          margin: 1em 0;
+          text-align: center;
+          overflow-x: auto;
+          overflow-y: hidden;
+          padding: 0.5em 0;
+        }
+        .katex-display > .katex {
+          display: inline-block;
+          text-align: center;
+          max-width: 100%;
+        }
+        .katex-html {
+          overflow-x: auto;
+          overflow-y: hidden;
+          max-width: 100%;
+          -webkit-overflow-scrolling: touch;
+        }
+        .math-error {
+          color: #cc0000;
+          border-bottom: 1px dashed #cc0000;
+          cursor: help;
+          padding: 0 0.2em;
+          background-color: #fff0f0;
+        }
+        .error-details {
+          display: none;
+          position: absolute;
+          background: #fff;
+          border: 1px solid #cc0000;
+          padding: 0.5em;
+          margin-top: 0.5em;
+          max-width: 100%;
+          box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+          z-index: 1000;
+          font-size: 0.9em;
+        }
+        .math-error:hover .error-details {
+          display: block;
+        }
+        @font-face {
+          font-family: 'KaTeX_Main';
+          src: local('KaTeX_Main'), url('https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/fonts/KaTeX_Main-Regular.woff2') format('woff2');
+          font-weight: normal;
+          font-style: normal;
+          font-display: swap;
+        }
+        @media screen and (max-width: 768px) {
+          .math-block {
+            font-size: 1em;
+            margin: 1.5em 0;
+          }
+          .katex {
+            font-size: 1em !important;
+          }
+        }
       `
     };
 
-    console.log('开始生成EPUB文件');
-
-    // 生成电子书
+    console.log('开始生成 EPUB 文件');
     const epubData = await epubGen(options, chapters);
+    console.log('EPUB 文件生成完成，大小:', epubData.length, '字节');
 
-    console.log('EPUB文件生成完成，大小:', epubData.length, '字节');
-
-    // 返回生成的电子书数据
     return new Response(epubData, {
       headers: {
         'Content-Type': 'application/epub+zip',
@@ -183,9 +567,9 @@ export async function POST(req: Request) {
     });
 
   } catch (error) {
-    console.error('导出EPUB失败:', error);
+    console.error('导出 EPUB 失败:', error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : '导出EPUB失败' },
+      { error: error instanceof Error ? error.message : '导出 EPUB 失败' },
       { status: 500 }
     );
   }

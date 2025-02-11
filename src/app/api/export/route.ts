@@ -30,21 +30,21 @@ class KaTeXStrategy implements FormulaStrategy {
     if (typeof element === 'string') return false;
     const isKatex = element.classList.contains('katex') || element.classList.contains('katex-display');
     if (isKatex) {
-      console.log('\n[KaTeX 检测] 发现 KaTeX 公式:');
-      console.log('- 元素类名:', element.className);
-      console.log('- 元素内容:', element.outerHTML.slice(0, 200) + '...');
+      // console.log('\n[KaTeX 检测] 发现 KaTeX 公式:');
+      // console.log('- 元素类名:', element.className);
+      // console.log('- 元素内容:', element.outerHTML.slice(0, 200) + '...');
     }
     return isKatex;
   }
 
   convert(element: Element, displayMode: boolean): string {
     try {
-      console.log('\n[KaTeX 转换] 开始处理:');
-      console.log('- 显示模式:', displayMode ? '块级' : '行内');
+      // console.log('\n[KaTeX 转换] 开始处理:');
+      // console.log('- 显示模式:', displayMode ? '块级' : '行内');
 
       // 提取所有 SVG 元素
       const svgElements = element.querySelectorAll('svg');
-      console.log('- 找到 SVG 元素数量:', svgElements.length);
+      // console.log('- 找到 SVG 元素数量:', svgElements.length);
 
       if (svgElements.length === 0) {
         throw new Error('未找到 SVG 元素');
@@ -53,7 +53,7 @@ class KaTeXStrategy implements FormulaStrategy {
       // 提取 KaTeX 生成的样式
       const styleElement = element.querySelector('style');
       const katexStyles = styleElement ? styleElement.textContent : '';
-      console.log('- 是否包含样式:', styleElement ? '是' : '否');
+      // console.log('- 是否包含样式:', styleElement ? '是' : '否');
 
       // 处理每个 SVG 元素
       let combinedSvg = '';
@@ -94,7 +94,7 @@ class KaTeXStrategy implements FormulaStrategy {
         ? 'display: block; margin: 1em auto; text-align: center;'
         : 'display: inline-block; vertical-align: middle; line-height: 0;';
 
-      console.log('[公式转换] 成功转换为 SVG');
+      // console.log('[公式转换] 成功转换为 SVG');
       
       // 返回包含所有 SVG 的容器
       return displayMode
@@ -102,7 +102,9 @@ class KaTeXStrategy implements FormulaStrategy {
         : `<span class="math-inline" style="${containerStyle}">${combinedSvg}</span>`;
 
     } catch (error) {
-      console.error('[KaTeX 转换] 错误:', error);
+      if (error instanceof Error) {
+      }
+      // console.error('[KaTeX 转换] 错误:', error); 
       return element.outerHTML;
     }
   }
@@ -117,7 +119,7 @@ class MathJaxStrategy implements FormulaStrategy {
     if (isMathML) {
       console.log('\n[MathML 检测] 发现 MathML 公式:');
       console.log('- 元素标签:', element.tagName);
-      console.log('- 是否包含 LaTeX 注解:', element.querySelector('annotation[encoding="application/x-tex"]') !== null);
+      console.log('- 原始内容:', element.outerHTML);
     }
     return isMathML;
   }
@@ -125,32 +127,85 @@ class MathJaxStrategy implements FormulaStrategy {
   convert(element: Element, displayMode: boolean): string {
     try {
       console.log('\n[MathML 转换] 开始处理:');
-      console.log('- 显示模式:', displayMode ? '块级' : '行内');
-
-      // 1. 首先尝试从 MathML 中提取 LaTeX
+      
+      // 1. 获取math元素
       const mathElement = element.tagName.toLowerCase() === 'math' ? 
         element : element.querySelector('math');
       
       if (!mathElement) {
-        throw new Error('未找到 math 元素');
+        throw new Error('未找到math元素');
       }
 
       // 2. 获取显示模式
-      const isDisplayBlock = mathElement.getAttribute('display') === 'block';
+      const isDisplayBlock = mathElement.getAttribute('display') === 'block' || displayMode;
       
-      // 3. 尝试获取 LaTeX 注解
+      // 3. 首选尝试获取LaTeX注解
       const annotation = mathElement.querySelector('annotation[encoding="application/x-tex"]');
-      if (annotation) {
-        const latex = annotation.textContent;
-        console.log('- 提取到 LaTeX:', latex);
+      if (annotation && annotation.textContent) {
+        const latex = annotation.textContent.trim();
+        console.log('- 从注解提取的LaTeX:', latex);
         
-        if (latex) {
-          // 使用 LaTeX 策略进行转换
-          return new LaTeXStrategy().convert(latex, isDisplayBlock || displayMode);
+        // 处理特殊字符和命令
+        const processedLatex = latex
+          // 保持原始的粗体命令
+          .replace(/\\boldsymbol{([^}]+)}/g, '\\boldsymbol{$1}')
+          // 保持原始的黑板粗体
+          .replace(/\\mathbb{([^}]+)}/g, '\\mathbb{$1}')
+          // 正确处理转置符号
+          .replace(/\\top/g, '\\top')
+          // 处理乘号
+          .replace(/\\times/g, '\\times')
+          // 处理属于符号
+          .replace(/\\in/g, '\\in')
+          // 移除equation环境但保持编号
+          .replace(/\\begin{equation}\s*/, '')
+          .replace(/\\end{equation}\s*/, '')
+          // 确保分数和根号周围有足够的空间
+          .replace(/\\frac{([^}]+)}{\\sqrt{([^}]+)}}/g, '\\dfrac{$1}{\\sqrt{$2}}')
+          // 处理矩阵转置
+          .replace(/\^{\\mathsf{T}}/g, '^{\\top}')
+          .replace(/\^T/g, '^{\\top}')
+          .trim();
+        
+        console.log('- 处理后的LaTeX:', processedLatex);
+        
+        // 使用KaTeX渲染
+        const katexOptions: katex.KatexOptions = {
+          displayMode: isDisplayBlock,
+          output: 'html',
+          throwOnError: false,
+          errorColor: '#cc0000',
+          trust: true,
+          maxSize: 1000,
+          maxExpand: 1000,
+          macros: {
+            '\\top': '^{\\mathsf{T}}',
+            '\\boldsymbol': '\\mathbf', // 如果KaTeX不支持boldsymbol，使用mathbf作为后备
+          },
+          strict: (function() {
+            try {
+              // 尝试使用更严格的解析
+              katex.renderToString(processedLatex, {strict: true});
+              return true;
+            } catch {  // 直接使用空的 catch 块
+              return false;
+            }
+          })()
+        };
+
+        const html = katex.renderToString(processedLatex, katexOptions);
+        const tempDom = new JSDOM(`<!DOCTYPE html><div>${html}</div>`);
+        const katexElement = tempDom.window.document.querySelector('.katex');
+        
+        if (katexElement) {
+          return new KaTeXStrategy().convert(katexElement, isDisplayBlock);
         }
       }
 
-      throw new Error('无法提取 LaTeX 注解');
+      // 4. 如果没有LaTeX注解，保持原始MathML
+      console.log('- 无法从注解提取LaTeX，保留原始MathML');
+      return mathElement.outerHTML;
+
     } catch (error) {
       console.error('[MathML 转换] 错误:', error);
       return element.outerHTML;
@@ -223,44 +278,44 @@ class FormulaProcessor {
   }
 
   processFormula(element: Element | string, displayMode: boolean = false): string {
-    console.log('\n[公式处理] 开始处理新公式:');
-    console.log('- 输入类型:', typeof element === 'string' ? '文本' : 'DOM元素');
+    // console.log('\n[公式处理] 开始处理新公式:');
+    // console.log('- 输入类型:', typeof element === 'string' ? '文本' : 'DOM元素');
     if (typeof element === 'string') {
-      console.log('- 输入内容:', element);
+      // console.log('- 输入内容:', element);
     } else {
-      console.log('- 元素标签:', element.tagName);
-      console.log('- 元素类名:', element.className);
-      console.log('- 元素内容:', element.outerHTML.slice(0, 200) + '...');
+      // console.log('- 元素标签:', element.tagName);
+      // console.log('- 元素类名:', element.className);
+      // console.log('- 元素内容:', element.outerHTML.slice(0, 200) + '...');
     }
 
     for (const strategy of this.strategies) {
       if (strategy.detect(element)) {
-        console.log('- 使用策略:', strategy.constructor.name);
+        // console.log('- 使用策略:', strategy.constructor.name);
         return strategy.convert(element, displayMode);
       }
     }
 
-    console.log('- 未找到匹配的处理策略，保留原始内容');
+    // console.log('- 未找到匹配的处理策略，保留原始内容');
     return typeof element === 'string' ? element : element.outerHTML;
   }
 }
 
 // 处理文章内容中的图片、代码块和数学公式
 async function processContent(content: string): Promise<string> {
-  console.log('\n[内容处理] 开始处理文章内容');
-  console.log('- 原始内容片段:', content.slice(0, 200) + '...');
+  // console.log('\n[内容处理] 开始处理文章内容');
+  // console.log('- 原始内容片段:', content.slice(0, 200) + '...');
 
   const dom = new JSDOM(`<!DOCTYPE html><body>${content}</body>`);
   const document = dom.window.document;
   const formulaProcessor = new FormulaProcessor();
 
   // 处理 MathML 公式
-  console.log('\n[内容处理] 查找 MathML 公式');
+  // console.log('\n[内容处理] 查找 MathML 公式');
   const mathElements = document.querySelectorAll('math');
-  console.log('- 找到 MathML 公式数量:', mathElements.length);
+  // console.log('- 找到 MathML 公式数量:', mathElements.length);
 
-  mathElements.forEach((element, index) => {
-    console.log(`\n[内容处理] 处理第 ${index + 1} 个 MathML 公式:`);
+  mathElements.forEach((element) => {
+    // console.log(`\n[内容处理] 处理第 ${index + 1} 个 MathML 公式:`);
     const svgContent = formulaProcessor.processFormula(
       element,
       element.getAttribute('display') === 'block'
@@ -271,13 +326,13 @@ async function processContent(content: string): Promise<string> {
   });
 
   // 处理已渲染的数学公式
-  console.log('\n[内容处理] 查找已渲染的公式');
+  // console.log('\n[内容处理] 查找已渲染的公式');
   const renderedFormulas = document.querySelectorAll('.katex, .katex-display, .MathJax, .MathJax_Display');
-  console.log('- 找到已渲染公式数量:', renderedFormulas.length);
+  // console.log('- 找到已渲染公式数量:', renderedFormulas.length);
 
-  renderedFormulas.forEach((element, index) => {
-    console.log(`\n[内容处理] 处理第 ${index + 1} 个已渲染公式:`);
-    console.log('- 元素类名:', element.className);
+  renderedFormulas.forEach((element) => {
+    // console.log(`\n[内容处理] 处理第 ${index + 1} 个已渲染公式:`);
+    // console.log('- 元素类名:', element.className);
     const svgContent = formulaProcessor.processFormula(
       element, 
       element.classList.contains('katex-display') || element.classList.contains('MathJax_Display')
@@ -288,18 +343,18 @@ async function processContent(content: string): Promise<string> {
   });
 
   // 处理原始 LaTeX 文本
-  console.log('\n[内容处理] 查找原始 LaTeX 公式');
+  // console.log('\n[内容处理] 查找原始 LaTeX 公式');
   const text = document.body.innerHTML;
   
   // 处理块级公式
   let processedText = text.replace(/\$\$([\s\S]+?)\$\$/g, (match) => {
-    console.log('\n[内容处理] 发现块级 LaTeX 公式:', match);
+    // console.log('\n[内容处理] 发现块级 LaTeX 公式:', match);
     return formulaProcessor.processFormula(match, true);
   });
 
   // 处理行内公式
   processedText = processedText.replace(/\$([^$\n]+?)\$/g, (match) => {
-    console.log('\n[内容处理] 发现行内 LaTeX 公式:', match);
+    // console.log('\n[内容处理] 发现行内 LaTeX 公式:', match);
     return formulaProcessor.processFormula(match, false);
   });
 

@@ -309,6 +309,149 @@ async function processContent(content: string): Promise<string> {
   const document = dom.window.document;
   const formulaProcessor = new FormulaProcessor();
 
+  // 处理代码块
+  // 1. 处理 pre + code 组合的代码块
+  const preCodeBlocks = document.querySelectorAll('pre > code, pre code');
+  for (const codeElement of Array.from(preCodeBlocks)) {
+    const preElement = codeElement.closest('pre');
+    if (!preElement) continue;
+
+    // 提取代码内容
+    const codeContent = codeElement.innerHTML
+      .replace(/<\/?span[^>]*>/g, '') // 移除所有span标签
+      .replace(/<br\s*\/?>/g, '\n') // 将<br>转换为换行符
+      .replace(/&lt;/g, '<') // 转换HTML实体
+      .replace(/&gt;/g, '>')
+      .replace(/&amp;/g, '&')
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'")
+      .trim();
+
+    // 处理缩进和格式化
+    const formattedCode = codeContent
+      .split('\n')
+      .map(line => {
+        // 保留原始缩进（使用空格）
+        const indentMatch = line.match(/^[\s\t]*/);
+        const indent = indentMatch ? indentMatch[0] : '';
+        const indentSpaces = indent.replace(/\t/g, '    '); // 将tab转换为4个空格
+        return indentSpaces + line.trim();
+      })
+      .join('\n');
+
+    // 获取代码语言
+    let language = '';
+    // 尝试从 code 标签的 class 获取语言
+    const codeClass = codeElement.className || '';
+    const codeLanguageMatch = codeClass.match(/(?:language|lang)-(\w+)/);
+    if (codeLanguageMatch) {
+      language = codeLanguageMatch[1];
+    } else {
+      // 尝试从 pre 标签的 class 获取语言
+      const preClass = preElement.className || '';
+      const preLanguageMatch = preClass.match(/(?:language|lang)-(\w+)/);
+      if (preLanguageMatch) {
+        language = preLanguageMatch[1];
+      }
+    }
+
+    // 创建新的代码块结构
+    const newPre = document.createElement('pre');
+    newPre.className = 'code-block' + (language ? ` language-${language}` : '');
+    
+    const newCode = document.createElement('code');
+    newCode.className = language ? `language-${language}` : '';
+    newCode.textContent = formattedCode;
+    
+    // 添加行号
+    const lines = formattedCode.split('\n');
+    const lineNumbers = document.createElement('div');
+    lineNumbers.className = 'line-numbers';
+    lineNumbers.innerHTML = lines.map((_, i) => `<span class="line-number">${i + 1}</span>`).join('');
+    
+    const codeWrapper = document.createElement('div');
+    codeWrapper.className = 'code-wrapper';
+    codeWrapper.appendChild(lineNumbers);
+    codeWrapper.appendChild(newCode);
+    
+    newPre.appendChild(codeWrapper);
+    if (preElement.parentNode) {
+      preElement.parentNode.replaceChild(newPre, preElement);
+    }
+  }
+
+  // 2. 处理其他可能的代码块格式（比如只有pre标签但包含代码的情况）
+  const remainingPreElements = document.querySelectorAll('pre:not(.code-block)');
+  for (const pre of Array.from(remainingPreElements)) {
+    // 检查是否看起来像代码块
+    const content = pre.innerHTML;
+    const isCodeBlock = (
+      // 检查是否包含编程相关的关键字
+      /\b(?:function|class|var|let|const|if|else|for|while|return|import|export)\b/.test(content) ||
+      // 检查是否包含常见的代码符号
+      /[{}\[\]()=><+\-*/%]/.test(content) ||
+      // 检查是否有代码相关的类名
+      pre.className.includes('code') ||
+      pre.className.includes('syntax') ||
+      // 检查是否有代码相关的属性
+      pre.hasAttribute('data-language') ||
+      pre.hasAttribute('data-lang')
+    );
+
+    if (isCodeBlock) {
+      // 提取代码内容
+      const codeContent = pre.innerHTML
+        .replace(/<\/?span[^>]*>/g, '')
+        .replace(/<br\s*\/?>/g, '\n')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&amp;/g, '&')
+        .replace(/&quot;/g, '"')
+        .replace(/&#39;/g, "'")
+        .trim();
+
+      // 处理缩进和格式化
+      const formattedCode = codeContent
+        .split('\n')
+        .map(line => {
+          // 保留原始缩进（使用空格）
+          const indentMatch = line.match(/^[\s\t]*/);
+          const indent = indentMatch ? indentMatch[0] : '';
+          const indentSpaces = indent.replace(/\t/g, '    '); // 将tab转换为4个空格
+          return indentSpaces + line.trim();
+        })
+        .join('\n');
+
+      // 尝试识别语言
+      let language = '';
+      // 从 data 属性中获取
+      language = pre.getAttribute('data-language') || 
+                pre.getAttribute('data-lang') || 
+                '';
+      
+      // 如果没有从 data 属性获取到，尝试从类名中获取
+      if (!language) {
+        const languageMatch = pre.className.match(/(?:language|lang)-(\w+)/);
+        if (languageMatch) {
+          language = languageMatch[1];
+        }
+      }
+
+      // 创建新的代码块结构
+      const newPre = document.createElement('pre');
+      newPre.className = 'code-block' + (language ? ` language-${language}` : '');
+      
+      const newCode = document.createElement('code');
+      newCode.className = language ? `language-${language}` : '';
+      newCode.textContent = formattedCode;
+      
+      newPre.appendChild(newCode);
+      if (pre.parentNode) {
+        pre.parentNode.replaceChild(newPre, pre);
+      }
+    }
+  }
+
   // 处理 MathML 公式
   // console.log('\n[内容处理] 查找 MathML 公式');
   const mathElements = document.querySelectorAll('math');
@@ -360,24 +503,6 @@ async function processContent(content: string): Promise<string> {
 
   // 更新 DOM 内容
   document.body.innerHTML = processedText;
-
-  // 处理代码块
-  const preElements = document.getElementsByTagName('pre');
-  for (const pre of Array.from(preElements)) {
-    // 确保代码块内容被正确转义
-    const codeContent = pre.innerHTML
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&apos;');
-    
-    // 重新包装代码块
-    pre.innerHTML = `<code>${codeContent}</code>`;
-    
-    // 添加样式类
-    pre.className = pre.className + ' code-block';
-  }
 
   // 清理 HTML，但保留数学公式的 HTML 结构
   const cleanHtml = document.body.innerHTML
@@ -513,19 +638,118 @@ export async function POST(req: Request) {
           background: #f8f9fa;
         }
         .code-block {
-          background-color: #f6f8fa;
-          border-radius: 6px;
-          padding: 1em;
-          margin: 1em 0;
+          background-color: #f8f9fa;
+          border-radius: 8px;
+          padding: 1em 0;
+          margin: 1.5em 0;
           overflow-x: auto;
-          font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+          border: 1px solid #e1e4e8;
+          position: relative;
+          font-family: "JetBrains Mono", "Fira Code", "Cascadia Code", "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
           font-size: 0.9em;
-          line-height: 1.45;
-          white-space: pre-wrap;
-          word-wrap: break-word;
+          line-height: 1.6;
+          -webkit-font-smoothing: antialiased;
+          tab-size: 4;
+        }
+        .code-wrapper {
+          display: flex;
+          position: relative;
+        }
+        .line-numbers {
+          display: flex;
+          flex-direction: column;
+          align-items: flex-end;
+          padding: 0 1em;
+          margin-right: 1em;
+          border-right: 1px solid #e1e4e8;
+          background-color: #f1f2f3;
+          user-select: none;
+          color: #6e7681;
+        }
+        .line-number {
+          font-size: 0.85em;
+          line-height: 1.6;
+          min-width: 2em;
+          text-align: right;
         }
         code {
+          flex: 1;
+          padding: 0 1em 0 0;
+          margin: 0;
+          overflow-x: auto;
           font-family: inherit;
+          white-space: pre;
+          background: none;
+          border: none;
+        }
+        /* Python 语法高亮 */
+        .language-python .keyword { color: #cf222e; }
+        .language-python .function { color: #8250df; }
+        .language-python .class-name { color: #953800; }
+        .language-python .string { color: #0a3069; }
+        .language-python .number { color: #0550ae; }
+        .language-python .comment { color: #6e7781; font-style: italic; }
+        .language-python .operator { color: #0550ae; }
+        .language-python .punctuation { color: #24292f; }
+        .language-python .decorator { color: #116329; }
+        .language-python .builtin { color: #0550ae; }
+        /* JavaScript/TypeScript 语法高亮 */
+        .language-javascript .keyword,
+        .language-typescript .keyword { color: #cf222e; }
+        .language-javascript .function,
+        .language-typescript .function { color: #8250df; }
+        .language-javascript .class-name,
+        .language-typescript .class-name { color: #953800; }
+        .language-javascript .string,
+        .language-typescript .string { color: #0a3069; }
+        .language-javascript .number,
+        .language-typescript .number { color: #0550ae; }
+        .language-javascript .comment,
+        .language-typescript .comment { color: #6e7781; font-style: italic; }
+        .language-javascript .operator,
+        .language-typescript .operator { color: #0550ae; }
+        .language-javascript .punctuation,
+        .language-typescript .punctuation { color: #24292f; }
+        /* 适配深色主题 */
+        @media (prefers-color-scheme: dark) {
+          .code-block {
+            background-color: #1f2937;
+            border-color: #374151;
+          }
+          .line-numbers {
+            background-color: #1a1f29;
+            border-right-color: #374151;
+            color: #8b949e;
+          }
+          code { color: #e5e7eb; }
+          /* Python 深色主题 */
+          .language-python .keyword { color: #ff7b72; }
+          .language-python .function { color: #d2a8ff; }
+          .language-python .class-name { color: #ffa657; }
+          .language-python .string { color: #a5d6ff; }
+          .language-python .number { color: #79c0ff; }
+          .language-python .comment { color: #8b949e; }
+          .language-python .operator { color: #79c0ff; }
+          .language-python .punctuation { color: #c9d1d9; }
+          .language-python .decorator { color: #7ee787; }
+          .language-python .builtin { color: #79c0ff; }
+          /* JavaScript/TypeScript 深色主题 */
+          .language-javascript .keyword,
+          .language-typescript .keyword { color: #ff7b72; }
+          .language-javascript .function,
+          .language-typescript .function { color: #d2a8ff; }
+          .language-javascript .class-name,
+          .language-typescript .class-name { color: #ffa657; }
+          .language-javascript .string,
+          .language-typescript .string { color: #a5d6ff; }
+          .language-javascript .number,
+          .language-typescript .number { color: #79c0ff; }
+          .language-javascript .comment,
+          .language-typescript .comment { color: #8b949e; }
+          .language-javascript .operator,
+          .language-typescript .operator { color: #79c0ff; }
+          .language-javascript .punctuation,
+          .language-typescript .punctuation { color: #c9d1d9; }
         }
         .math-block {
           margin: 2em 0;

@@ -1,11 +1,10 @@
 'use client';
 
 import { useState } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
+import { ExportDialog } from '@/components/ExportDialog';
 
 interface Article {
   title: string;
@@ -20,57 +19,19 @@ interface CrawlResult {
   success: boolean;
 }
 
+interface CrawlError {
+  url: string;
+  error: string;
+  errorDetail?: string;
+}
+
 interface CrawlResponse {
   results: CrawlResult[];
   totalProcessed: number;
   successCount: number;
-}
-
-interface ExportDialogProps {
-  isOpen: boolean;
-  onClose: () => void;
-  onExport: (title: string) => void;
-}
-
-function ExportDialog({ isOpen, onClose, onExport }: ExportDialogProps) {
-  const [title, setTitle] = useState('');
-
-  const handleExport = () => {
-    onExport(title);
-    onClose();
-  };
-
-  return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>导出电子书</DialogTitle>
-        </DialogHeader>
-        <div className="grid gap-4 py-4">
-          <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="title" className="text-right">
-              电子书标题
-            </Label>
-            <Input
-              id="title"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              className="col-span-3"
-              placeholder="请输入电子书标题..."
-            />
-          </div>
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>
-            取消
-          </Button>
-          <Button onClick={handleExport} disabled={!title}>
-            导出
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
+  error?: string;
+  errorDetail?: string;
+  errors?: CrawlError[];
 }
 
 export function SiteCrawler() {
@@ -80,16 +41,20 @@ export function SiteCrawler() {
   const [results, setResults] = useState<CrawlResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [errorDetail, setErrorDetail] = useState<string | null>(null);
   const [selectedArticleIndex, setSelectedArticleIndex] = useState<number | null>(null);
   const [selectedArticles, setSelectedArticles] = useState<Set<number>>(new Set());
   const [isExportDialogOpen, setIsExportDialogOpen] = useState(false);
+  const [isErrorDialogOpen, setIsErrorDialogOpen] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
+    setErrorDetail(null);
     setResults(null);
     setSelectedArticleIndex(null);
+    setIsErrorDialogOpen(false);
 
     try {
       const response = await fetch('/api/crawl', {
@@ -100,14 +65,27 @@ export function SiteCrawler() {
         body: JSON.stringify({ url, maxPages, maxDepth }),
       });
 
+      const data = await response.json();
+
       if (!response.ok) {
-        throw new Error('爬取失败');
+        setError(data.error || '爬取失败');
+        setErrorDetail(data.errorDetail);
+        setIsErrorDialogOpen(true);
+        return;
       }
 
-      const data = await response.json();
+      if (data.error) {
+        setError(data.error);
+        setErrorDetail(data.errorDetail);
+        setIsErrorDialogOpen(true);
+      }
+
       setResults(data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : '发生未知错误');
+      const errorMessage = err instanceof Error ? err.message : '发生未知错误';
+      setError(errorMessage);
+      setErrorDetail('请检查网络连接并稍后重试');
+      setIsErrorDialogOpen(true);
     } finally {
       setLoading(false);
     }
@@ -258,11 +236,42 @@ export function SiteCrawler() {
         </div>
       </form>
 
-      {error && (
-        <div className="mb-8 p-4 bg-red-100 text-red-700 rounded-lg">
-          {error}
-        </div>
-      )}
+      <Dialog open={isErrorDialogOpen} onOpenChange={setIsErrorDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-red-600">
+              {error || '爬取失败'}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="mt-4">
+            <div className="bg-red-50 p-4 rounded-lg">
+              <pre className="whitespace-pre-wrap text-sm text-red-800">
+                {errorDetail || '未知错误'}
+              </pre>
+            </div>
+            {results?.errors && results.errors.length > 0 && (
+              <div className="mt-4">
+                <h4 className="font-medium mb-2">各页面详细错误：</h4>
+                <div className="max-h-60 overflow-y-auto">
+                  {results.errors.map((error, index) => (
+                    <div key={index} className="mb-4 p-3 bg-gray-50 rounded-lg">
+                      <p className="text-sm font-medium text-gray-700 mb-1">
+                        {error.url}
+                      </p>
+                      <p className="text-sm text-red-600 mb-1">{error.error}</p>
+                      {error.errorDetail && (
+                        <pre className="text-xs text-gray-600 whitespace-pre-wrap">
+                          {error.errorDetail}
+                        </pre>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {results && (
         <div className="space-y-6">
@@ -342,8 +351,8 @@ export function SiteCrawler() {
       )}
 
       <ExportDialog
-        isOpen={isExportDialogOpen}
-        onClose={() => setIsExportDialogOpen(false)}
+        open={isExportDialogOpen}
+        onOpenChange={setIsExportDialogOpen}
         onExport={handleExport}
       />
     </div>

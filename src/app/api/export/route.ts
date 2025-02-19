@@ -301,109 +301,40 @@ class FormulaProcessor {
 }
 
 // 处理文章内容中的图片、代码块和数学公式
-async function processContent(content: string): Promise<string> {
-  // console.log('\n[内容处理] 开始处理文章内容');
-  // console.log('- 原始内容片段:', content.slice(0, 200) + '...');
-
-  const dom = new JSDOM(`<!DOCTYPE html><body>${content}</body>`);
-  const document = dom.window.document;
-  const formulaProcessor = new FormulaProcessor();
-
-  // 处理代码块
-  // 1. 处理 pre + code 组合的代码块
-  const preCodeBlocks = document.querySelectorAll('pre > code, pre code');
-  for (const codeElement of Array.from(preCodeBlocks)) {
-    const preElement = codeElement.closest('pre');
-    if (!preElement) continue;
-
-    // 提取代码内容
-    const codeContent = codeElement.innerHTML
-      .replace(/<\/?span[^>]*>/g, '') // 移除所有span标签
-      .replace(/<br\s*\/?>/g, '\n') // 将<br>转换为换行符
-      .replace(/&lt;/g, '<') // 转换HTML实体
-      .replace(/&gt;/g, '>')
-      .replace(/&amp;/g, '&')
-      .replace(/&quot;/g, '"')
-      .replace(/&#39;/g, "'")
-      .trim();
-
-    // 处理缩进和格式化
-    const formattedCode = codeContent
-      .split('\n')
-      .map(line => {
-        // 保留原始缩进（使用空格）
-        const indentMatch = line.match(/^[\s\t]*/);
-        const indent = indentMatch ? indentMatch[0] : '';
-        const indentSpaces = indent.replace(/\t/g, '    '); // 将tab转换为4个空格
-        return indentSpaces + line.trim();
-      })
-      .join('\n');
-
-    // 获取代码语言
-    let language = '';
-    // 尝试从 code 标签的 class 获取语言
-    const codeClass = codeElement.className || '';
-    const codeLanguageMatch = codeClass.match(/(?:language|lang)-(\w+)/);
-    if (codeLanguageMatch) {
-      language = codeLanguageMatch[1];
-    } else {
-      // 尝试从 pre 标签的 class 获取语言
-      const preClass = preElement.className || '';
-      const preLanguageMatch = preClass.match(/(?:language|lang)-(\w+)/);
-      if (preLanguageMatch) {
-        language = preLanguageMatch[1];
-      }
+async function processContent(content: string): Promise<{ success: boolean; content?: string; error?: string }> {
+  try {
+    // 检查内容是否为空
+    if (!content || content.trim().length === 0) {
+      return {
+        success: false,
+        error: '文章内容为空'
+      };
     }
 
-    // 创建新的代码块结构
-    const newPre = document.createElement('pre');
-    newPre.className = 'code-block' + (language ? ` language-${language}` : '');
-    
-    const newCode = document.createElement('code');
-    newCode.className = language ? `language-${language}` : '';
-    newCode.textContent = formattedCode;
-    
-    // 添加行号
-    const lines = formattedCode.split('\n');
-    const lineNumbers = document.createElement('div');
-    lineNumbers.className = 'line-numbers';
-    lineNumbers.innerHTML = lines.map((_, i) => `<span class="line-number">${i + 1}</span>`).join('');
-    
-    const codeWrapper = document.createElement('div');
-    codeWrapper.className = 'code-wrapper';
-    codeWrapper.appendChild(lineNumbers);
-    codeWrapper.appendChild(newCode);
-    
-    newPre.appendChild(codeWrapper);
-    if (preElement.parentNode) {
-      preElement.parentNode.replaceChild(newPre, preElement);
+    const dom = new JSDOM(`<!DOCTYPE html><body>${content}</body>`);
+    const document = dom.window.document;
+    const formulaProcessor = new FormulaProcessor();
+
+    // 检查 DOM 是否有效
+    if (!document.body || !document.body.innerHTML) {
+      return {
+        success: false,
+        error: '无法解析文章 HTML 内容'
+      };
     }
-  }
 
-  // 2. 处理其他可能的代码块格式（比如只有pre标签但包含代码的情况）
-  const remainingPreElements = document.querySelectorAll('pre:not(.code-block)');
-  for (const pre of Array.from(remainingPreElements)) {
-    // 检查是否看起来像代码块
-    const content = pre.innerHTML;
-    const isCodeBlock = (
-      // 检查是否包含编程相关的关键字
-      /\b(?:function|class|var|let|const|if|else|for|while|return|import|export)\b/.test(content) ||
-      // 检查是否包含常见的代码符号
-      /[{}\[\]()=><+\-*/%]/.test(content) ||
-      // 检查是否有代码相关的类名
-      pre.className.includes('code') ||
-      pre.className.includes('syntax') ||
-      // 检查是否有代码相关的属性
-      pre.hasAttribute('data-language') ||
-      pre.hasAttribute('data-lang')
-    );
+    // 处理代码块
+    // 1. 处理 pre + code 组合的代码块
+    const preCodeBlocks = document.querySelectorAll('pre > code, pre code');
+    for (const codeElement of Array.from(preCodeBlocks)) {
+      const preElement = codeElement.closest('pre');
+      if (!preElement) continue;
 
-    if (isCodeBlock) {
       // 提取代码内容
-      const codeContent = pre.innerHTML
-        .replace(/<\/?span[^>]*>/g, '')
-        .replace(/<br\s*\/?>/g, '\n')
-        .replace(/&lt;/g, '<')
+      const codeContent = codeElement.innerHTML
+        .replace(/<\/?span[^>]*>/g, '') // 移除所有span标签
+        .replace(/<br\s*\/?>/g, '\n') // 将<br>转换为换行符
+        .replace(/&lt;/g, '<') // 转换HTML实体
         .replace(/&gt;/g, '>')
         .replace(/&amp;/g, '&')
         .replace(/&quot;/g, '"')
@@ -422,18 +353,19 @@ async function processContent(content: string): Promise<string> {
         })
         .join('\n');
 
-      // 尝试识别语言
+      // 获取代码语言
       let language = '';
-      // 从 data 属性中获取
-      language = pre.getAttribute('data-language') || 
-                pre.getAttribute('data-lang') || 
-                '';
-      
-      // 如果没有从 data 属性获取到，尝试从类名中获取
-      if (!language) {
-        const languageMatch = pre.className.match(/(?:language|lang)-(\w+)/);
-        if (languageMatch) {
-          language = languageMatch[1];
+      // 尝试从 code 标签的 class 获取语言
+      const codeClass = codeElement.className || '';
+      const codeLanguageMatch = codeClass.match(/(?:language|lang)-(\w+)/);
+      if (codeLanguageMatch) {
+        language = codeLanguageMatch[1];
+      } else {
+        // 尝试从 pre 标签的 class 获取语言
+        const preClass = preElement.className || '';
+        const preLanguageMatch = preClass.match(/(?:language|lang)-(\w+)/);
+        if (preLanguageMatch) {
+          language = preLanguageMatch[1];
         }
       }
 
@@ -445,73 +377,173 @@ async function processContent(content: string): Promise<string> {
       newCode.className = language ? `language-${language}` : '';
       newCode.textContent = formattedCode;
       
-      newPre.appendChild(newCode);
-      if (pre.parentNode) {
-        pre.parentNode.replaceChild(newPre, pre);
+      // 添加行号
+      const lines = formattedCode.split('\n');
+      const lineNumbers = document.createElement('div');
+      lineNumbers.className = 'line-numbers';
+      lineNumbers.innerHTML = lines.map((_, i) => `<span class="line-number">${i + 1}</span>`).join('');
+      
+      const codeWrapper = document.createElement('div');
+      codeWrapper.className = 'code-wrapper';
+      codeWrapper.appendChild(lineNumbers);
+      codeWrapper.appendChild(newCode);
+      
+      newPre.appendChild(codeWrapper);
+      if (preElement.parentNode) {
+        preElement.parentNode.replaceChild(newPre, preElement);
       }
     }
+
+    // 2. 处理其他可能的代码块格式（比如只有pre标签但包含代码的情况）
+    const remainingPreElements = document.querySelectorAll('pre:not(.code-block)');
+    for (const pre of Array.from(remainingPreElements)) {
+      // 检查是否看起来像代码块
+      const content = pre.innerHTML;
+      const isCodeBlock = (
+        // 检查是否包含编程相关的关键字
+        /\b(?:function|class|var|let|const|if|else|for|while|return|import|export)\b/.test(content) ||
+        // 检查是否包含常见的代码符号
+        /[{}\[\]()=><+\-*/%]/.test(content) ||
+        // 检查是否有代码相关的类名
+        pre.className.includes('code') ||
+        pre.className.includes('syntax') ||
+        // 检查是否有代码相关的属性
+        pre.hasAttribute('data-language') ||
+        pre.hasAttribute('data-lang')
+      );
+
+      if (isCodeBlock) {
+        // 提取代码内容
+        const codeContent = pre.innerHTML
+          .replace(/<\/?span[^>]*>/g, '')
+          .replace(/<br\s*\/?>/g, '\n')
+          .replace(/&lt;/g, '<')
+          .replace(/&gt;/g, '>')
+          .replace(/&amp;/g, '&')
+          .replace(/&quot;/g, '"')
+          .replace(/&#39;/g, "'")
+          .trim();
+
+        // 处理缩进和格式化
+        const formattedCode = codeContent
+          .split('\n')
+          .map(line => {
+            // 保留原始缩进（使用空格）
+            const indentMatch = line.match(/^[\s\t]*/);
+            const indent = indentMatch ? indentMatch[0] : '';
+            const indentSpaces = indent.replace(/\t/g, '    '); // 将tab转换为4个空格
+            return indentSpaces + line.trim();
+          })
+          .join('\n');
+
+        // 尝试识别语言
+        let language = '';
+        // 从 data 属性中获取
+        language = pre.getAttribute('data-language') || 
+                  pre.getAttribute('data-lang') || 
+                  '';
+        
+        // 如果没有从 data 属性获取到，尝试从类名中获取
+        if (!language) {
+          const languageMatch = pre.className.match(/(?:language|lang)-(\w+)/);
+          if (languageMatch) {
+            language = languageMatch[1];
+          }
+        }
+
+        // 创建新的代码块结构
+        const newPre = document.createElement('pre');
+        newPre.className = 'code-block' + (language ? ` language-${language}` : '');
+        
+        const newCode = document.createElement('code');
+        newCode.className = language ? `language-${language}` : '';
+        newCode.textContent = formattedCode;
+        
+        newPre.appendChild(newCode);
+        if (pre.parentNode) {
+          pre.parentNode.replaceChild(newPre, pre);
+        }
+      }
+    }
+
+    // 处理 MathML 公式
+    // console.log('\n[内容处理] 查找 MathML 公式');
+    const mathElements = document.querySelectorAll('math');
+    // console.log('- 找到 MathML 公式数量:', mathElements.length);
+
+    mathElements.forEach((element) => {
+      // console.log(`\n[内容处理] 处理第 ${index + 1} 个 MathML 公式:`);
+      const svgContent = formulaProcessor.processFormula(
+        element,
+        element.getAttribute('display') === 'block'
+      );
+      const temp = document.createElement('div');
+      temp.innerHTML = svgContent;
+      element.parentNode?.replaceChild(temp.firstChild!, element);
+    });
+
+    // 处理已渲染的数学公式
+    // console.log('\n[内容处理] 查找已渲染的公式');
+    const renderedFormulas = document.querySelectorAll('.katex, .katex-display, .MathJax, .MathJax_Display');
+    // console.log('- 找到已渲染公式数量:', renderedFormulas.length);
+
+    renderedFormulas.forEach((element) => {
+      // console.log(`\n[内容处理] 处理第 ${index + 1} 个已渲染公式:`);
+      // console.log('- 元素类名:', element.className);
+      const svgContent = formulaProcessor.processFormula(
+        element, 
+        element.classList.contains('katex-display') || element.classList.contains('MathJax_Display')
+      );
+      const temp = document.createElement('div');
+      temp.innerHTML = svgContent;
+      element.parentNode?.replaceChild(temp.firstChild!, element);
+    });
+
+    // 处理原始 LaTeX 文本
+    // console.log('\n[内容处理] 查找原始 LaTeX 公式');
+    const text = document.body.innerHTML;
+    
+    // 处理块级公式
+    let processedText = text.replace(/\$\$([\s\S]+?)\$\$/g, (match) => {
+      // console.log('\n[内容处理] 发现块级 LaTeX 公式:', match);
+      return formulaProcessor.processFormula(match, true);
+    });
+
+    // 处理行内公式
+    processedText = processedText.replace(/\$([^$\n]+?)\$/g, (match) => {
+      // console.log('\n[内容处理] 发现行内 LaTeX 公式:', match);
+      return formulaProcessor.processFormula(match, false);
+    });
+
+    // 更新 DOM 内容
+    document.body.innerHTML = processedText;
+
+    // 清理 HTML
+    const cleanHtml = document.body.innerHTML
+      .replace(/&nbsp;/g, ' ')
+      .replace(/\u00A0/g, ' ')
+      .replace(/>\s+</g, '><')
+      .replace(/\s{2,}/g, ' ');
+
+    // 检查清理后的内容是否有效
+    if (!cleanHtml || cleanHtml.trim().length === 0) {
+      return {
+        success: false,
+        error: '处理后的文章内容为空'
+      };
+    }
+
+    return {
+      success: true,
+      content: cleanHtml
+    };
+  } catch (error) {
+    console.error('[内容处理] 错误:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : '处理文章内容时发生错误'
+    };
   }
-
-  // 处理 MathML 公式
-  // console.log('\n[内容处理] 查找 MathML 公式');
-  const mathElements = document.querySelectorAll('math');
-  // console.log('- 找到 MathML 公式数量:', mathElements.length);
-
-  mathElements.forEach((element) => {
-    // console.log(`\n[内容处理] 处理第 ${index + 1} 个 MathML 公式:`);
-    const svgContent = formulaProcessor.processFormula(
-      element,
-      element.getAttribute('display') === 'block'
-    );
-    const temp = document.createElement('div');
-    temp.innerHTML = svgContent;
-    element.parentNode?.replaceChild(temp.firstChild!, element);
-  });
-
-  // 处理已渲染的数学公式
-  // console.log('\n[内容处理] 查找已渲染的公式');
-  const renderedFormulas = document.querySelectorAll('.katex, .katex-display, .MathJax, .MathJax_Display');
-  // console.log('- 找到已渲染公式数量:', renderedFormulas.length);
-
-  renderedFormulas.forEach((element) => {
-    // console.log(`\n[内容处理] 处理第 ${index + 1} 个已渲染公式:`);
-    // console.log('- 元素类名:', element.className);
-    const svgContent = formulaProcessor.processFormula(
-      element, 
-      element.classList.contains('katex-display') || element.classList.contains('MathJax_Display')
-    );
-    const temp = document.createElement('div');
-    temp.innerHTML = svgContent;
-    element.parentNode?.replaceChild(temp.firstChild!, element);
-  });
-
-  // 处理原始 LaTeX 文本
-  // console.log('\n[内容处理] 查找原始 LaTeX 公式');
-  const text = document.body.innerHTML;
-  
-  // 处理块级公式
-  let processedText = text.replace(/\$\$([\s\S]+?)\$\$/g, (match) => {
-    // console.log('\n[内容处理] 发现块级 LaTeX 公式:', match);
-    return formulaProcessor.processFormula(match, true);
-  });
-
-  // 处理行内公式
-  processedText = processedText.replace(/\$([^$\n]+?)\$/g, (match) => {
-    // console.log('\n[内容处理] 发现行内 LaTeX 公式:', match);
-    return formulaProcessor.processFormula(match, false);
-  });
-
-  // 更新 DOM 内容
-  document.body.innerHTML = processedText;
-
-  // 清理 HTML，但保留数学公式的 HTML 结构
-  const cleanHtml = document.body.innerHTML
-    .replace(/&nbsp;/g, ' ')  // 替换 &nbsp; 为普通空格
-    .replace(/\u00A0/g, ' ')  // 替换 non-breaking space 为普通空格
-    .replace(/>\s+</g, '><')  // 移除标签之间的多余空白
-    .replace(/\s{2,}/g, ' '); // 合并多个空格为一个
-
-  return cleanHtml;
 }
 
 export async function POST(req: Request) {
@@ -544,20 +576,55 @@ export async function POST(req: Request) {
     });
 
     // 处理所有文章内容
-    const chapters = await Promise.all(
+    const processedResults = await Promise.all(
       articles.map(async ({ article, url }, index) => {
         console.log(`\n[内容处理] 开始处理第 ${index + 1} 篇文章:`, article.title);
-        const processedContent = await processContent(article.content);
+        const result = await processContent(article.content);
+        
+        if (!result.success) {
+          console.error(`[内容处理] 第 ${index + 1} 篇文章处理失败:`, result.error);
+          return {
+            success: false as const,
+            title: article.title,
+            url,
+            error: result.error
+          };
+        }
+
         console.log(`[内容处理] 第 ${index + 1} 篇文章处理完成`);
         return {
+          success: true as const,
           title: article.title,
-          content: `${processedContent}
-            <p class="source-url">原文链接：<a href="${url}">${url}</a></p>`,
-          beforeChapter: '<div class="chapter">',
-          afterChapter: '</div>'
+          url,
+          content: result.content
         };
       })
     );
+
+    // 检查是否有处理失败的文章
+    const failedArticles = processedResults.filter(result => !result.success);
+    if (failedArticles.length > 0) {
+      return NextResponse.json(
+        {
+          error: '部分文章处理失败，无法生成电子书',
+          errorDetail: failedArticles.map(article => 
+            `文章 "${article.title}" (${article.url}) 处理失败: ${article.error}`
+          ).join('\n')
+        },
+        { status: 400 }
+      );
+    }
+
+    // 准备成功处理的文章
+    const chapters = processedResults
+      .filter((result): result is { success: true; title: string; url: string; content: string } => result.success)
+      .map(({ title, url, content }) => ({
+        title,
+        content: `${content}
+          <p class="source-url">原文链接：<a href="${url}">${url}</a></p>`,
+        beforeChapter: '<div class="chapter">',
+        afterChapter: '</div>'
+      }));
 
     console.log('所有文章处理完成，开始生成电子书');
 

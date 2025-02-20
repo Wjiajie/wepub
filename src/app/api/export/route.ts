@@ -4,104 +4,141 @@ import { promisify } from 'util';
 import fs from 'fs/promises';
 import path from 'path';
 import os from 'os';
-import { v4 as uuidv4 } from 'uuid';
+import { Server } from 'http';
 
 const execAsync = promisify(exec);
 
-// 支持的导出格式
-const SUPPORTED_FORMATS = ['pdf', 'epub', 'html', 'md'] as const;
-type ExportFormat = typeof SUPPORTED_FORMATS[number];
-
 interface ExportRequest {
-  urls: string[];
-  format: ExportFormat;
-  title?: string;
+  contents: Array<{
+    url: string;
+    title: string;
+    content: string;
+  }>;
+  format: string;
+  title: string;
   author?: string;
 }
 
-// 验证导出格式是否支持
-function isValidFormat(format: string): format is ExportFormat {
-  return SUPPORTED_FORMATS.includes(format as ExportFormat);
+// 扩展全局类型定义
+declare global {
+  // eslint-disable-next-line no-var
+  var __tempServer: Server | undefined;
 }
 
-// 创建临时目录
-async function createTempDir() {
-  const tempDir = path.join(os.tmpdir(), `wepub-${uuidv4()}`);
-  await fs.mkdir(tempDir, { recursive: true });
-  return tempDir;
+// 准备单个文章的HTML内容
+function prepareArticleHtml(article: ExportRequest['contents'][0]) {
+  return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>${article.title}</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body>
+  <article>
+    <h1>${article.title}</h1>
+    ${article.content}
+  </article>
+</body>
+</html>`;
 }
 
-// 清理临时文件
-async function cleanup(tempDir: string, filePath: string) {
-  try {
-    await fs.unlink(filePath);
-    await fs.rmdir(tempDir);
-  } catch (error) {
-    console.error('清理临时文件失败:', error);
+// 准备完整的HTML内容
+function prepareFullHtml(contents: ExportRequest['contents']) {
+  return contents.map(prepareArticleHtml).join('\n\n');
+}
+
+// 创建一个简单的HTTP服务器来提供HTML内容
+async function serveHtmlContent(html: string, port: number): Promise<void> {
+  const http = await import('http');
+  
+  return new Promise((resolve, reject) => {
+    const server = http.createServer((req, res) => {
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      res.end(html);
+    });
+    
+    server.listen(port, 'localhost');
+    
+    server.on('listening', () => resolve());
+    server.on('error', reject);
+    
+    // 保存server引用以便后续关闭
+    global.__tempServer = server;
+  });
+}
+
+// 关闭HTTP服务器
+async function closeServer(): Promise<void> {
+  const server = global.__tempServer;
+  if (server) {
+    return new Promise((resolve) => {
+      server.close(() => {
+        global.__tempServer = undefined;
+        resolve();
+      });
+    });
   }
 }
 
 export async function POST(req: Request) {
+  const port = 3456; // 使用一个固定的端口
+  
   try {
-    const { urls, format, title = '导出文档', author = '未知作者' } = await req.json() as ExportRequest;
-
-    // 验证输入
-    if (!Array.isArray(urls) || urls.length === 0) {
-      return NextResponse.json(
-        { error: '请提供要导出的URL列表' },
-        { status: 400 }
-      );
-    }
-
-    if (!format || !isValidFormat(format)) {
-      return NextResponse.json(
-        { error: `不支持的导出格式。支持的格式: ${SUPPORTED_FORMATS.join(', ')}` },
-        { status: 400 }
-      );
-    }
-
+    const { contents, format, title, author = 'WePub' } = (await req.json()) as ExportRequest;
+    
     // 创建临时目录
-    const tempDir = await createTempDir();
-    const outputFileName = `${title.replace(/[^a-zA-Z0-9]/g, '-')}.${format}`;
-    const outputPath = path.join(tempDir, outputFileName);
-
-    // 构建 percollate 命令
-    let command = `npx percollate ${format}`;
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'wepub-'));
+    const outputPath = path.join(tempDir, `output.${format}`);
     
-    // 添加元数据
-    if (format === 'epub' || format === 'pdf') {
-      command += ` --title "${title}" --author "${author}"`;
+    try {
+      // 准备HTML内容
+      const fullHtml = prepareFullHtml(contents);
+      
+      // 启动临时HTTP服务器
+      await serveHtmlContent(fullHtml, port);
+      
+      // 构建 percollate 命令，使用 http://localhost:{port} 作为源
+      const command = `npx percollate ${format} --output "${outputPath}" --title "${title}" --author "${author}" "http://localhost:${port}"`;
+      
+      // 执行命令
+      const { stdout, stderr } = await execAsync(command);
+      console.log('Percollate 输出:', stdout);
+      if (stderr) {
+        console.error('Percollate 错误:', stderr);
+      }
+      
+      // 读取生成的文件
+      const file = await fs.readFile(outputPath);
+      
+      // 设置正确的 Content-Type
+      const contentTypes: Record<string, string> = {
+        'pdf': 'application/pdf',
+        'epub': 'application/epub+zip',
+        'html': 'text/html',
+        'md': 'text/markdown'
+      };
+      
+      // 对文件名进行编码
+      const encodedTitle = encodeURIComponent(title);
+      
+      // 返回文件
+      return new Response(file, {
+        headers: {
+          'Content-Type': contentTypes[format] || 'application/octet-stream',
+          'Content-Disposition': `attachment; filename*=UTF-8''${encodedTitle}.${format}`,
+        },
+      });
+    } finally {
+      // 关闭服务器
+      await closeServer();
+      // 清理临时文件
+      await fs.rm(tempDir, { recursive: true, force: true });
     }
-    
-    // 添加输出路径和URL列表
-    command += ` -o "${outputPath}" ${urls.map(url => `"${url}"`).join(' ')}`;
-
-    // 执行命令
-    await execAsync(command);
-
-    // 读取生成的文件
-    const fileContent = await fs.readFile(outputPath);
-    
-    // 设置正确的Content-Type
-    const contentTypes = {
-      'pdf': 'application/pdf',
-      'epub': 'application/epub+zip',
-      'html': 'text/html',
-      'md': 'text/markdown'
-    };
-
-    // 清理临时文件
-    cleanup(tempDir, outputPath).catch(console.error);
-
-    // 返回文件
-    return new NextResponse(fileContent, {
-      headers: {
-        'Content-Type': contentTypes[format],
-        'Content-Disposition': `attachment; filename="${outputFileName}"`,
-      },
-    });
-
   } catch (error) {
+    // 确保服务器被关闭
+    await closeServer();
+    
     console.error('导出失败:', error);
     return NextResponse.json(
       { 

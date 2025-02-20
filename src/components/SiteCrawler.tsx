@@ -115,8 +115,12 @@ export function SiteCrawler() {
     if (!results || selectedArticles.size === 0) return;
 
     try {
-      // 获取选中文章的URL列表
-      const urls = Array.from(selectedArticles).map(index => results.results[index].url);
+      // 获取选中文章的内容
+      const selectedContents = Array.from(selectedArticles).map(index => ({
+        url: results.results[index].url,
+        title: results.results[index].article.title,
+        content: results.results[index].article.content
+      }));
 
       const response = await fetch('/api/export', {
         method: 'POST',
@@ -124,7 +128,7 @@ export function SiteCrawler() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          urls,
+          contents: selectedContents,
           format,
           title,
           author: 'WePub'

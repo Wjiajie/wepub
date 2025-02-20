@@ -1,12 +1,5 @@
 import { NextResponse } from 'next/server';
-import { exec } from 'child_process';
-import { promisify } from 'util';
-import fs from 'fs/promises';
-import path from 'path';
-import os from 'os';
-import { Server } from 'http';
-
-const execAsync = promisify(exec);
+import JSZip from 'jszip';
 
 interface ExportRequest {
   contents: Array<{
@@ -14,131 +7,186 @@ interface ExportRequest {
     title: string;
     content: string;
   }>;
-  format: string;
   title: string;
   author?: string;
 }
 
-// 扩展全局类型定义
-declare global {
-  // eslint-disable-next-line no-var
-  var __tempServer: Server | undefined;
+// 准备导航链接
+function prepareNavigation(contents: ExportRequest['contents'], currentIndex: number) {
+  const prev = currentIndex > 0 
+    ? `<a href="article_${currentIndex - 1}.html">上一篇: ${contents[currentIndex - 1].title}</a>` 
+    : '';
+  const next = currentIndex < contents.length - 1 
+    ? `<a href="article_${currentIndex + 1}.html">下一篇: ${contents[currentIndex + 1].title}</a>` 
+    : '';
+  const index = `<a href="index.html">返回目录</a>`;
+
+  return `<div class="navigation">
+    <div class="prev">${prev}</div>
+    <div class="index">${index}</div>
+    <div class="next">${next}</div>
+  </div>`;
 }
 
 // 准备单个文章的HTML内容
-function prepareArticleHtml(article: ExportRequest['contents'][0]) {
+function prepareArticleHtml(article: ExportRequest['contents'][0], contents: ExportRequest['contents'], index: number) {
   return `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="UTF-8">
   <title>${article.title}</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      line-height: 1.6;
+      padding: 1em;
+      max-width: 50em;
+      margin: 0 auto;
+    }
+    img {
+      max-width: 100%;
+      height: auto;
+    }
+    pre {
+      overflow-x: auto;
+      padding: 1em;
+      background: #f5f5f5;
+    }
+    code {
+      background: #f5f5f5;
+      padding: 0.2em 0.4em;
+      border-radius: 3px;
+    }
+    .navigation {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin: 2em 0;
+      padding: 1em;
+      background: #f8f9fa;
+      border-radius: 4px;
+    }
+    .navigation a {
+      color: #0066cc;
+      text-decoration: none;
+    }
+    .navigation a:hover {
+      text-decoration: underline;
+    }
+    .source-link {
+      color: #666;
+      font-size: 0.9em;
+      margin-top: 1em;
+    }
+    .source-link a {
+      color: #0066cc;
+      text-decoration: none;
+    }
+    .source-link a:hover {
+      text-decoration: underline;
+    }
+  </style>
 </head>
 <body>
+  ${prepareNavigation(contents, index)}
   <article>
     <h1>${article.title}</h1>
     ${article.content}
   </article>
+  <div class="source-link">
+    <p>原文链接：<a href="${article.url}" target="_blank">${article.url}</a></p>
+  </div>
+  ${prepareNavigation(contents, index)}
 </body>
 </html>`;
 }
 
-// 准备完整的HTML内容
-function prepareFullHtml(contents: ExportRequest['contents']) {
-  return contents.map(prepareArticleHtml).join('\n\n');
-}
+// 准备目录页面
+function prepareIndexHtml(contents: ExportRequest['contents'], title: string) {
+  const toc = contents.map((article, index) => 
+    `<li>
+      <a href="article_${index}.html">${article.title}</a>
+      <div class="article-url">${article.url}</div>
+    </li>`
+  ).join('\n');
 
-// 创建一个简单的HTTP服务器来提供HTML内容
-async function serveHtmlContent(html: string, port: number): Promise<void> {
-  const http = await import('http');
-  
-  return new Promise((resolve, reject) => {
-    const server = http.createServer((req, res) => {
-      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-      res.end(html);
-    });
-    
-    server.listen(port, 'localhost');
-    
-    server.on('listening', () => resolve());
-    server.on('error', reject);
-    
-    // 保存server引用以便后续关闭
-    global.__tempServer = server;
-  });
-}
-
-// 关闭HTTP服务器
-async function closeServer(): Promise<void> {
-  const server = global.__tempServer;
-  if (server) {
-    return new Promise((resolve) => {
-      server.close(() => {
-        global.__tempServer = undefined;
-        resolve();
-      });
-    });
-  }
+  return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>${title}</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      line-height: 1.6;
+      padding: 1em;
+      max-width: 50em;
+      margin: 0 auto;
+    }
+    .toc {
+      list-style: none;
+      padding: 0;
+    }
+    .toc li {
+      margin: 1em 0;
+      padding: 1em;
+      background: #f8f9fa;
+      border-radius: 4px;
+    }
+    .toc a {
+      color: #0066cc;
+      text-decoration: none;
+      font-size: 1.1em;
+      font-weight: 500;
+    }
+    .toc a:hover {
+      text-decoration: underline;
+    }
+    .article-url {
+      color: #666;
+      font-size: 0.9em;
+      margin-top: 0.5em;
+    }
+  </style>
+</head>
+<body>
+  <h1>${title}</h1>
+  <p>共收录 ${contents.length} 篇文章</p>
+  <ul class="toc">
+    ${toc}
+  </ul>
+</body>
+</html>`;
 }
 
 export async function POST(req: Request) {
-  const port = 3456; // 使用一个固定的端口
-  
   try {
-    const { contents, format, title, author = 'WePub' } = (await req.json()) as ExportRequest;
+    const { contents, title } = (await req.json()) as ExportRequest;
     
-    // 创建临时目录
-    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'wepub-'));
-    const outputPath = path.join(tempDir, `output.${format}`);
+    // 创建一个新的 ZIP 文件
+    const zip = new JSZip();
     
-    try {
-      // 准备HTML内容
-      const fullHtml = prepareFullHtml(contents);
-      
-      // 启动临时HTTP服务器
-      await serveHtmlContent(fullHtml, port);
-      
-      // 构建 percollate 命令，使用 http://localhost:{port} 作为源
-      const command = `npx percollate ${format} --output "${outputPath}" --title "${title}" --author "${author}" "http://localhost:${port}"`;
-      
-      // 执行命令
-      const { stdout, stderr } = await execAsync(command);
-      console.log('Percollate 输出:', stdout);
-      if (stderr) {
-        console.error('Percollate 错误:', stderr);
-      }
-      
-      // 读取生成的文件
-      const file = await fs.readFile(outputPath);
-      
-      // 设置正确的 Content-Type
-      const contentTypes: Record<string, string> = {
-        'pdf': 'application/pdf',
-        'epub': 'application/epub+zip',
-        'html': 'text/html',
-        'md': 'text/markdown'
-      };
-      
-      // 对文件名进行编码
-      const encodedTitle = encodeURIComponent(title);
-      
-      // 返回文件
-      return new Response(file, {
-        headers: {
-          'Content-Type': contentTypes[format] || 'application/octet-stream',
-          'Content-Disposition': `attachment; filename*=UTF-8''${encodedTitle}.${format}`,
-        },
-      });
-    } finally {
-      // 关闭服务器
-      await closeServer();
-      // 清理临时文件
-      await fs.rm(tempDir, { recursive: true, force: true });
-    }
+    // 添加目录页面
+    zip.file('index.html', prepareIndexHtml(contents, title));
+    
+    // 添加所有文章
+    contents.forEach((article, index) => {
+      zip.file(`article_${index}.html`, prepareArticleHtml(article, contents, index));
+    });
+    
+    // 生成 ZIP 文件
+    const zipBlob = await zip.generateAsync({type: 'nodebuffer'});
+    
+    // 返回 ZIP 文件
+    return new Response(zipBlob, {
+      headers: {
+        'Content-Type': 'application/zip',
+        'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(title)}.zip`,
+      },
+    });
   } catch (error) {
-    // 确保服务器被关闭
-    await closeServer();
-    
     console.error('导出失败:', error);
     return NextResponse.json(
       { 

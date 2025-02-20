@@ -145,7 +145,7 @@ export function SiteCrawler() {
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `${title}.${format}`;
+      a.download = `${title}.zip`;
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);

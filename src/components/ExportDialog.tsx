@@ -3,7 +3,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 
 interface ExportDialogProps {
   open: boolean;
@@ -11,28 +10,18 @@ interface ExportDialogProps {
   onExport: (title: string, format: string) => void;
 }
 
-// 支持的导出格式
-const EXPORT_FORMATS = [
-  { value: 'pdf', label: 'PDF文档', description: '适合打印和阅读' },
-  { value: 'epub', label: 'EPUB电子书', description: '适合在电子书阅读器中阅读' },
-  { value: 'html', label: 'HTML网页', description: '适合在浏览器中查看' },
-  { value: 'md', label: 'Markdown文档', description: '适合进一步编辑和修改' }
-] as const;
-
 export function ExportDialog({ open, onOpenChange, onExport }: ExportDialogProps) {
   const [title, setTitle] = useState('');
-  const [format, setFormat] = useState<string>('pdf');
 
   const handleExport = () => {
-    onExport(title, format);
+    onExport(title, 'html');
     onOpenChange(false);
     setTitle(''); // 重置标题
-    setFormat('pdf'); // 重置格式
   };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[500px]">
+      <DialogContent>
         <DialogHeader>
           <DialogTitle>导出文档</DialogTitle>
         </DialogHeader>
@@ -51,26 +40,11 @@ export function ExportDialog({ open, onOpenChange, onExport }: ExportDialogProps
           </div>
           <div className="grid grid-cols-4 items-start gap-4">
             <Label className="text-right pt-2">导出格式</Label>
-            <RadioGroup
-              value={format}
-              onValueChange={setFormat}
-              className="col-span-3 grid gap-3"
-            >
-              {EXPORT_FORMATS.map((f) => (
-                <div key={f.value} className="flex items-start space-x-3">
-                  <RadioGroupItem value={f.value} id={f.value} className="mt-1" />
-                  <Label
-                    htmlFor={f.value}
-                    className="grid gap-1 font-normal"
-                  >
-                    <span className="font-medium">{f.label}</span>
-                    <span className="text-sm text-muted-foreground">
-                      {f.description}
-                    </span>
-                  </Label>
-                </div>
-              ))}
-            </RadioGroup>
+            <div className="col-span-3">
+              <p className="text-sm text-muted-foreground">
+                将导出为 HTML 文档集合（ZIP 格式），可以在浏览器中查看
+              </p>
+            </div>
           </div>
         </div>
         <DialogFooter>

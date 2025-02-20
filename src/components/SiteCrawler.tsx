@@ -111,58 +111,45 @@ export function SiteCrawler() {
     setSelectedArticles(newSelected);
   };
 
-  const handleExport = async (title: string) => {
-    if (!results) return;
-
-    const selectedArticlesList = Array.from(selectedArticles).map(
-      index => {
-        const result = results.results[index];
-        return {
-          url: result.url,
-          article: {
-            title: result.article.title,
-            content: result.article.content,
-            byline: result.article.byline,
-            excerpt: result.article.excerpt
-          }
-        };
-      }
-    );
+  const handleExport = async (title: string, format: string) => {
+    if (!results || selectedArticles.size === 0) return;
 
     try {
+      // 获取选中文章的URL列表
+      const urls = Array.from(selectedArticles).map(index => results.results[index].url);
+
       const response = await fetch('/api/export', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
+          urls,
+          format,
           title,
-          articles: selectedArticlesList,
+          author: 'WePub'
         }),
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || '导出失败');
+        const error = await response.json();
+        throw new Error(error.error || '导出失败');
       }
 
-      // 获取二进制数据
+      // 处理文件下载
       const blob = await response.blob();
-      
-      // 创建下载链接
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `${title}.epub`;
+      a.download = `${title}.${format}`;
       document.body.appendChild(a);
       a.click();
-      
-      // 清理
       window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
+      a.remove();
     } catch (err) {
-      console.error('导出失败:', err);
       setError(err instanceof Error ? err.message : '导出失败');
+      setErrorDetail('导出过程中发生错误，请稍后重试');
+      setIsErrorDialogOpen(true);
     }
   };
 

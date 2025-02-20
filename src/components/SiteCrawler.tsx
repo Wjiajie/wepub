@@ -5,6 +5,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ExportDialog } from '@/components/ExportDialog';
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 
 interface Article {
   title: string;
@@ -158,75 +160,88 @@ export function SiteCrawler() {
   };
 
   return (
-    <div className="max-w-4xl mx-auto">
-      <form onSubmit={handleSubmit} className="mb-8">
-        <div className="space-y-4">
-          <div>
-            <label htmlFor="url" className="block text-sm font-medium mb-1">
-              网站URL
-            </label>
-            <input
-              id="url"
-              type="url"
-              value={url}
-              onChange={(e) => setUrl(e.target.value)}
-              placeholder="输入网站URL..."
-              required
-              className="w-full px-4 py-2 border rounded-lg"
-            />
-            <p className="mt-1 text-sm text-gray-500">
-              提示：输入网站的根URL，系统会自动爬取其下的所有子页面
-            </p>
-          </div>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label htmlFor="maxPages" className="block text-sm font-medium mb-1">
-                最大页面数量
+    <div className="max-w-5xl mx-auto space-y-8">
+      {/* 主要输入区域 */}
+      <Card>
+        <CardHeader className="text-center">
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleSubmit} className="space-y-6">
+            <div className="space-y-2">
+              <label htmlFor="url" className="text-sm font-medium text-gray-700">
+                网站URL
               </label>
-              <input
-                id="maxPages"
-                type="number"
-                value={maxPages}
-                onChange={(e) => setMaxPages(Number(e.target.value))}
-                min="1"
-                max="50"
-                className="w-full px-4 py-2 border rounded-lg"
+              <Input
+                id="url"
+                type="url"
+                value={url}
+                onChange={(e) => setUrl(e.target.value)}
+                placeholder="输入网站URL..."
+                required
+                className="w-full"
               />
-              <p className="mt-1 text-sm text-gray-500">
-                限制爬取的总页面数量（1-50）
+              <p className="text-sm text-gray-500">
+                提示：输入网站的根URL，系统会自动爬取其下的所有子页面
               </p>
             </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="space-y-2">
+                <label htmlFor="maxPages" className="text-sm font-medium text-gray-700">
+                  最大页面数量
+                </label>
+                <Input
+                  id="maxPages"
+                  type="number"
+                  value={maxPages}
+                  onChange={(e) => setMaxPages(Number(e.target.value))}
+                  min="1"
+                  max="50"
+                  className="w-full"
+                />
+                <p className="text-sm text-gray-500">
+                  限制爬取的总页面数量（1-50）
+                </p>
+              </div>
 
-            <div>
-              <label htmlFor="maxDepth" className="block text-sm font-medium mb-1">
-                递归深度
-              </label>
-              <input
-                id="maxDepth"
-                type="number"
-                value={maxDepth}
-                onChange={(e) => setMaxDepth(Number(e.target.value))}
-                min="1"
-                max="10"
-                className="w-full px-4 py-2 border rounded-lg"
-              />
-              <p className="mt-1 text-sm text-gray-500">
-                限制递归查找的层级（1-10）
-              </p>
+              <div className="space-y-2">
+                <label htmlFor="maxDepth" className="text-sm font-medium text-gray-700">
+                  递归深度
+                </label>
+                <Input
+                  id="maxDepth"
+                  type="number"
+                  value={maxDepth}
+                  onChange={(e) => setMaxDepth(Number(e.target.value))}
+                  min="1"
+                  max="10"
+                  className="w-full"
+                />
+                <p className="text-sm text-gray-500">
+                  限制递归查找的层级（1-10）
+                </p>
+              </div>
             </div>
-          </div>
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
-          >
-            {loading ? '爬取中...' : '开始爬取'}
-          </button>
-        </div>
-      </form>
+            <Button
+              type="submit"
+              disabled={loading}
+              className="w-full h-12 text-base"
+            >
+              {loading ? (
+                <div className="flex items-center space-x-2">
+                  <div className="w-5 h-5 border-t-2 border-b-2 border-white rounded-full animate-spin"></div>
+                  <span>爬取中...</span>
+                </div>
+              ) : (
+                '开始爬取'
+              )}
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
 
+      {/* 错误提示对话框 */}
       <Dialog open={isErrorDialogOpen} onOpenChange={setIsErrorDialogOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
@@ -234,28 +249,30 @@ export function SiteCrawler() {
               {error || '爬取失败'}
             </DialogTitle>
           </DialogHeader>
-          <div className="mt-4">
+          <div className="mt-4 space-y-4">
             <div className="bg-red-50 p-4 rounded-lg">
               <pre className="whitespace-pre-wrap text-sm text-red-800">
                 {errorDetail || '未知错误'}
               </pre>
             </div>
             {results?.errors && results.errors.length > 0 && (
-              <div className="mt-4">
-                <h4 className="font-medium mb-2">各页面详细错误：</h4>
-                <div className="max-h-60 overflow-y-auto">
+              <div className="space-y-3">
+                <h4 className="font-medium">各页面详细错误：</h4>
+                <div className="max-h-60 overflow-y-auto space-y-2">
                   {results.errors.map((error, index) => (
-                    <div key={index} className="mb-4 p-3 bg-gray-50 rounded-lg">
-                      <p className="text-sm font-medium text-gray-700 mb-1">
-                        {error.url}
-                      </p>
-                      <p className="text-sm text-red-600 mb-1">{error.error}</p>
-                      {error.errorDetail && (
-                        <pre className="text-xs text-gray-600 whitespace-pre-wrap">
-                          {error.errorDetail}
-                        </pre>
-                      )}
-                    </div>
+                    <Card key={index}>
+                      <CardContent className="p-3">
+                        <p className="font-medium text-sm text-gray-700 mb-1">
+                          {error.url}
+                        </p>
+                        <p className="text-sm text-red-600 mb-1">{error.error}</p>
+                        {error.errorDetail && (
+                          <pre className="text-xs text-gray-600 whitespace-pre-wrap">
+                            {error.errorDetail}
+                          </pre>
+                        )}
+                      </CardContent>
+                    </Card>
                   ))}
                 </div>
               </div>
@@ -264,79 +281,101 @@ export function SiteCrawler() {
         </DialogContent>
       </Dialog>
 
+      {/* 结果展示区域 */}
       {results && (
         <div className="space-y-6">
-          <div className="p-4 bg-gray-100 rounded-lg flex justify-between items-center">
-            <div>
-              <h3 className="font-medium">爬取结果统计</h3>
-              <p>总处理页面：{results.totalProcessed}</p>
-              <p>成功解析：{results.successCount}</p>
-            </div>
-            <div className="space-x-4">
-              <Button
-                variant="outline"
-                onClick={toggleSelectAll}
-              >
-                {selectedArticles.size === results.results.length ? '取消全选' : '全选'}
-              </Button>
-              <Button
-                onClick={() => setIsExportDialogOpen(true)}
-                disabled={selectedArticles.size === 0}
-              >
-                导出选中页面
-              </Button>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="border rounded-lg p-4">
-              <h3 className="font-medium mb-4">已解析的页面</h3>
-              <div className="space-y-2 max-h-[500px] overflow-y-auto">
-                {results.results.map((result, index) => (
-                  <div
-                    key={result.url}
-                    className="flex items-center space-x-2 p-2 hover:bg-gray-50 rounded"
-                  >
-                    <Checkbox
-                      checked={selectedArticles.has(index)}
-                      onCheckedChange={() => toggleArticle(index)}
-                    />
-                    <button
-                      onClick={() => setSelectedArticleIndex(index)}
-                      className={`flex-1 text-left ${
-                        selectedArticleIndex === index ? 'bg-gray-100' : ''
-                      }`}
-                    >
-                      <div className="font-medium truncate">{result.article.title}</div>
-                      <div className="text-sm text-gray-500 truncate">{result.url}</div>
-                    </button>
+          <Card>
+            <CardContent className="p-6">
+              <div className="flex justify-between items-center">
+                <div className="space-y-1">
+                  <h3 className="text-lg font-medium">爬取结果统计</h3>
+                  <div className="text-sm text-gray-500 space-x-4">
+                    <span>总处理页面：{results.totalProcessed}</span>
+                    <span>成功解析：{results.successCount}</span>
                   </div>
-                ))}
+                </div>
+                <div className="flex space-x-3">
+                  <Button
+                    variant="outline"
+                    onClick={toggleSelectAll}
+                    className="min-w-[100px]"
+                  >
+                    {selectedArticles.size === results.results.length ? '取消全选' : '全选'}
+                  </Button>
+                  <Button
+                    onClick={() => setIsExportDialogOpen(true)}
+                    disabled={selectedArticles.size === 0}
+                    className="min-w-[120px]"
+                  >
+                    导出选中页面
+                  </Button>
+                </div>
               </div>
-            </div>
+            </CardContent>
+          </Card>
 
-            <div className="border rounded-lg p-4">
-              <h3 className="font-medium mb-4">文章预览</h3>
-              <div className="prose max-h-[500px] overflow-y-auto">
-                {selectedArticleIndex !== null ? (
-                  <>
-                    <h1>{results.results[selectedArticleIndex].article.title}</h1>
-                    {results.results[selectedArticleIndex].article.byline && (
-                      <p className="text-gray-600">
-                        {results.results[selectedArticleIndex].article.byline}
-                      </p>
-                    )}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg font-medium">已解析的页面</CardTitle>
+              </CardHeader>
+              <CardContent className="p-4">
+                <div className="space-y-2 max-h-[600px] overflow-y-auto">
+                  {results.results.map((result, index) => (
                     <div
-                      dangerouslySetInnerHTML={{
-                        __html: results.results[selectedArticleIndex].article.content,
-                      }}
-                    />
-                  </>
-                ) : (
-                  <p className="text-gray-500">选择左侧文章以查看内容</p>
-                )}
-              </div>
-            </div>
+                      key={result.url}
+                      className="flex items-center space-x-3 p-3 hover:bg-gray-50 rounded-lg transition-colors"
+                    >
+                      <Checkbox
+                        checked={selectedArticles.has(index)}
+                        onCheckedChange={() => toggleArticle(index)}
+                      />
+                      <button
+                        onClick={() => setSelectedArticleIndex(index)}
+                        className={`flex-1 text-left p-2 rounded-md transition-colors ${
+                          selectedArticleIndex === index ? 'bg-gray-100' : ''
+                        }`}
+                      >
+                        <div className="font-medium truncate">{result.article.title}</div>
+                        <div className="text-sm text-gray-500 truncate mt-1">{result.url}</div>
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg font-medium">文章预览</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="prose prose-sm max-h-[600px] overflow-y-auto">
+                  {selectedArticleIndex !== null ? (
+                    <>
+                      <h1 className="text-xl font-bold mb-4">
+                        {results.results[selectedArticleIndex].article.title}
+                      </h1>
+                      {results.results[selectedArticleIndex].article.byline && (
+                        <p className="text-gray-600 text-sm mb-4">
+                          {results.results[selectedArticleIndex].article.byline}
+                        </p>
+                      )}
+                      <div
+                        className="mt-4"
+                        dangerouslySetInnerHTML={{
+                          __html: results.results[selectedArticleIndex].article.content,
+                        }}
+                      />
+                    </>
+                  ) : (
+                    <div className="flex items-center justify-center h-40 text-gray-500">
+                      选择左侧文章以查看内容
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
           </div>
         </div>
       )}

@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import { Readability } from '@mozilla/readability';
 import { JSDOM } from 'jsdom';
-import { supabase } from '@/lib/supabase';
 
 interface Article {
   title: string;
@@ -415,16 +414,11 @@ export async function POST(req: Request) {
     // 过滤出成功解析的页面
     const successfulResults = results.filter((result): result is SuccessResult => result.success);
     
+    // 过滤出失败的结果
+    const errors = results.filter((result): result is ErrorResult => !result.success);
+
     // 如果没有成功解析任何页面
     if (successfulResults.length === 0) {
-      const errors = results
-        .filter(result => !result.success)
-        .map(result => ({
-          url: result.url,
-          error: (result as ErrorResult).error,
-          errorDetail: (result as ErrorResult & { errorDetail?: string }).errorDetail
-        }));
-
       return NextResponse.json({
         error: '未能成功解析任何页面',
         errorDetail: '详细错误信息：\n' + 
@@ -433,44 +427,19 @@ export async function POST(req: Request) {
       }, { status: 400 });
     }
 
-    // 如果配置了Supabase，保存到数据库
-    if (process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
-      try {
-        const { error } = await supabase
-          .from('articles')
-          .insert(
-            successfulResults.map(result => ({
-              url: result.url,
-              title: result.article.title,
-              content: result.article.content,
-              excerpt: result.article.excerpt,
-              author: result.article.byline,
-            }))
-          );
-
-        if (error) {
-          console.error('保存文章失败:', error);
-        }
-      } catch (dbError) {
-        console.error('数据库操作失败:', dbError);
-      }
-    }
-
+    // 返回结果
     return NextResponse.json({
       results: successfulResults,
-      totalProcessed: results.length,
+      totalProcessed: processedUrls.size,
       successCount: successfulResults.length,
+      errors: errors
     });
   } catch (error) {
-    console.error('\n=== 爬取任务失败 ===');
-    console.error(error);
-    console.error('==================\n');
+    console.error('爬取失败:', error);
     return NextResponse.json(
       { 
         error: '爬取失败',
-        errorDetail: error instanceof Error ? 
-          `错误详情：${error.message}\n\n如果问题持续存在，请：\n1. 检查网络连接\n2. 确认网站可以正常访问\n3. 稍后重试` : 
-          '发生未知错误，请稍后重试'
+        errorDetail: error instanceof Error ? error.message : '未知错误'
       },
       { status: 500 }
     );

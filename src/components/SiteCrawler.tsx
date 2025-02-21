@@ -147,7 +147,9 @@ export function SiteCrawler() {
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `${title}.zip`;
+      // 根据格式设置正确的文件扩展名
+      const extension = format === 'html' || format === 'md' ? 'zip' : format;
+      a.download = `${title}.${extension}`;
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);

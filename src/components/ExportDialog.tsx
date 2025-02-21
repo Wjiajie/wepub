@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 
 interface ExportDialogProps {
   open: boolean;
@@ -13,11 +14,20 @@ interface ExportDialogProps {
 
 export function ExportDialog({ open, onOpenChange, onExport }: ExportDialogProps) {
   const [title, setTitle] = useState('');
+  const [format, setFormat] = useState('html');
 
   const handleExport = () => {
-    onExport(title, 'html');
+    onExport(title, format);
     onOpenChange(false);
     setTitle('');
+    setFormat('html');
+  };
+
+  const formatDescriptions = {
+    html: '将导出为 HTML 文档集合（ZIP 格式），包含目录页面和文章间的导航链接',
+    pdf: '将所有文章合并为一个 PDF 文档，支持目录和页码',
+    epub: '将所有文章转换为电子书格式，适合在电子阅读器上阅读',
+    md: '将导出为 Markdown 文档集合（ZIP 格式），包含目录和所有文章的 Markdown 文件'
   };
 
   return (
@@ -40,17 +50,36 @@ export function ExportDialog({ open, onOpenChange, onExport }: ExportDialogProps
                 placeholder="请输入导出文档的标题..."
               />
             </div>
+            
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">
+                导出格式
+              </Label>
+              <RadioGroup
+                value={format}
+                onValueChange={setFormat}
+                className="grid grid-cols-2 gap-4"
+              >
+                {Object.entries({
+                  html: 'HTML',
+                  pdf: 'PDF',
+                  epub: 'EPUB',
+                  md: 'Markdown'
+                }).map(([value, label]) => (
+                  <div key={value} className="flex items-center space-x-2">
+                    <RadioGroupItem value={value} id={value} />
+                    <Label htmlFor={value}>{label}</Label>
+                  </div>
+                ))}
+              </RadioGroup>
+            </div>
+
             <Card className="p-4 bg-gray-50">
               <div className="space-y-2">
-                <h4 className="font-medium text-sm">导出格式说明</h4>
+                <h4 className="font-medium text-sm">格式说明</h4>
                 <p className="text-sm text-gray-600">
-                  将导出为 HTML 文档集合（ZIP 格式），包含：
+                  {formatDescriptions[format as keyof typeof formatDescriptions]}
                 </p>
-                <ul className="text-sm text-gray-600 list-disc list-inside space-y-1">
-                  <li>所有选中的文章页面</li>
-                  <li>带有目录的索引页面</li>
-                  <li>文章间的导航链接</li>
-                </ul>
               </div>
             </Card>
           </div>

@@ -8,10 +8,11 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 interface ExportDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onExport: (title: string, format: string, author: string, description: string) => void;
+  onExport: (title: string, format: string, author: string, description: string) => Promise<void>;
+  isExporting: boolean;
 }
 
-export function ExportDialog({ open, onOpenChange, onExport }: ExportDialogProps) {
+export function ExportDialog({ open, onOpenChange, onExport, isExporting }: ExportDialogProps) {
   const [title, setTitle] = useState('');
   const [format, setFormat] = useState('html');
   const [author, setAuthor] = useState('');
@@ -108,11 +109,11 @@ export function ExportDialog({ open, onOpenChange, onExport }: ExportDialogProps
           </div>
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isExporting}>
             取消
           </Button>
-          <Button onClick={handleExport} disabled={!title}>
-            导出
+          <Button onClick={handleExport} disabled={!title || isExporting}>
+            {isExporting ? '导出中...' : '导出'}
           </Button>
         </DialogFooter>
       </DialogContent>

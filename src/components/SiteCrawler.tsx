@@ -49,6 +49,7 @@ export function SiteCrawler() {
   const [isExportDialogOpen, setIsExportDialogOpen] = useState(false);
   const [isErrorDialogOpen, setIsErrorDialogOpen] = useState(false);
   const [keepHistory, setKeepHistory] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
 
   // 在组件挂载时从 localStorage 加载用户偏好和历史数据
   useEffect(() => {
@@ -159,7 +160,8 @@ export function SiteCrawler() {
 
   const handleExport = async (title: string, format: string, author: string, description: string) => {
     if (!results || selectedArticles.size === 0) return;
-
+    
+    setIsExporting(true);
     try {
       // 获取选中文章的内容
       const selectedContents = Array.from(selectedArticles).map(index => ({
@@ -192,7 +194,6 @@ export function SiteCrawler() {
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      // 根据格式设置正确的文件扩展名
       const extension = format === 'html' || format === 'md' ? 'zip' : format;
       a.download = `${title}.${extension}`;
       document.body.appendChild(a);
@@ -203,6 +204,8 @@ export function SiteCrawler() {
       setError(err instanceof Error ? err.message : '导出失败');
       setErrorDetail('导出过程中发生错误，请稍后重试');
       setIsErrorDialogOpen(true);
+    } finally {
+      setIsExporting(false);
     }
   };
 
@@ -359,16 +362,17 @@ export function SiteCrawler() {
                   <Button
                     variant="outline"
                     onClick={toggleSelectAll}
+                    disabled={isExporting}
                     className="min-w-[100px]"
                   >
                     {selectedArticles.size === results.results.length ? '取消全选' : '全选'}
                   </Button>
                   <Button
                     onClick={() => setIsExportDialogOpen(true)}
-                    disabled={selectedArticles.size === 0}
+                    disabled={selectedArticles.size === 0 || isExporting}
                     className="min-w-[120px]"
                   >
-                    导出选中页面
+                    {isExporting ? '导出中...' : '导出选中页面'}
                   </Button>
                   {keepHistory && (
                     <Button
@@ -379,6 +383,7 @@ export function SiteCrawler() {
                         setSelectedArticles(new Set());
                         setSelectedArticleIndex(null);
                       }}
+                      disabled={isExporting}
                       className="min-w-[120px]"
                     >
                       清空历史
@@ -459,6 +464,7 @@ export function SiteCrawler() {
         open={isExportDialogOpen}
         onOpenChange={setIsExportDialogOpen}
         onExport={handleExport}
+        isExporting={isExporting}
       />
     </div>
   );

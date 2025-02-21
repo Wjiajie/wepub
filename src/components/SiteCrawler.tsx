@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -48,13 +48,39 @@ export function SiteCrawler() {
   const [selectedArticles, setSelectedArticles] = useState<Set<number>>(new Set());
   const [isExportDialogOpen, setIsExportDialogOpen] = useState(false);
   const [isErrorDialogOpen, setIsErrorDialogOpen] = useState(false);
+  const [keepHistory, setKeepHistory] = useState(false);
+
+  // 在组件挂载时从 localStorage 加载用户偏好和历史数据
+  useEffect(() => {
+    const saved = localStorage?.getItem('keepHistory');
+    if (saved) {
+      setKeepHistory(JSON.parse(saved));
+      const savedResults = localStorage.getItem('crawlResults');
+      if (savedResults) {
+        setResults(JSON.parse(savedResults));
+      }
+    }
+  }, []);
+
+  // 当 keepHistory 变化时保存到 localStorage
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('keepHistory', JSON.stringify(keepHistory));
+    }
+  }, [keepHistory]);
+
+  // 当结果变化时，如果开启了历史保留，则保存到 localStorage
+  useEffect(() => {
+    if (typeof window !== 'undefined' && results && keepHistory) {
+      localStorage.setItem('crawlResults', JSON.stringify(results));
+    }
+  }, [results, keepHistory]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
     setErrorDetail(null);
-    setResults(null);
     setSelectedArticleIndex(null);
     setIsErrorDialogOpen(false);
 
@@ -82,7 +108,25 @@ export function SiteCrawler() {
         setIsErrorDialogOpen(true);
       }
 
-      setResults(data);
+      // 如果保留历史，合并新旧结果
+      if (keepHistory && results) {
+        // 创建一个Set来存储已有的URL
+        const existingUrls = new Set(results.results.map((r: CrawlResult) => r.url));
+        // 过滤掉已存在的URL
+        const newResults = data.results.filter((r: CrawlResult) => !existingUrls.has(r.url));
+        
+        const combinedResults = {
+          ...data,
+          totalProcessed: data.totalProcessed + results.totalProcessed,
+          // 只计算新增的成功数量
+          successCount: results.successCount + newResults.length,
+          results: [...results.results, ...newResults],
+          errors: [...(results.errors || []), ...(data.errors || [])],
+        };
+        setResults(combinedResults);
+      } else {
+        setResults(data);
+      }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : '发生未知错误';
       setError(errorMessage);
@@ -113,7 +157,7 @@ export function SiteCrawler() {
     setSelectedArticles(newSelected);
   };
 
-  const handleExport = async (title: string, format: string) => {
+  const handleExport = async (title: string, format: string, author: string, description: string) => {
     if (!results || selectedArticles.size === 0) return;
 
     try {
@@ -133,7 +177,8 @@ export function SiteCrawler() {
           contents: selectedContents,
           format,
           title,
-          author: 'WePub'
+          author,
+          description
         }),
       });
 
@@ -225,6 +270,20 @@ export function SiteCrawler() {
               </div>
             </div>
 
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="keepHistory"
+                checked={keepHistory}
+                onCheckedChange={(checked) => setKeepHistory(checked as boolean)}
+              />
+              <label
+                htmlFor="keepHistory"
+                className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+              >
+                保留历史内容（刷新页面不会丢失）
+              </label>
+            </div>
+
             <Button
               type="submit"
               disabled={loading}
@@ -311,6 +370,20 @@ export function SiteCrawler() {
                   >
                     导出选中页面
                   </Button>
+                  {keepHistory && (
+                    <Button
+                      variant="destructive"
+                      onClick={() => {
+                        setResults(null);
+                        localStorage.removeItem('crawlResults');
+                        setSelectedArticles(new Set());
+                        setSelectedArticleIndex(null);
+                      }}
+                      className="min-w-[120px]"
+                    >
+                      清空历史
+                    </Button>
+                  )}
                 </div>
               </div>
             </CardContent>
@@ -325,7 +398,7 @@ export function SiteCrawler() {
                 <div className="space-y-2 max-h-[600px] overflow-y-auto">
                   {results.results.map((result, index) => (
                     <div
-                      key={result.url}
+                      key={`${result.url}-${index}`}
                       className="flex items-center space-x-3 p-3 hover:bg-gray-50 rounded-lg transition-colors"
                     >
                       <Checkbox

@@ -16,14 +16,14 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
-  return (
+  return 
     <html lang="zh" suppressHydrationWarning>
-      <body className={inter.className}>
+      <body className={inter.className} suppressHydrationWarning>
         <ThemeProvider>
           <ThemeToggle />
           {children}
         </ThemeProvider>
       </body>
     </html>
-  );
+  ;
 }

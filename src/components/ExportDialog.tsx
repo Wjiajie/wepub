@@ -3,24 +3,27 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
-import { Card } from '@/components/ui/card';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 
 interface ExportDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onExport: (title: string, format: string) => void;
+  onExport: (title: string, format: string, author: string, description: string) => void;
 }
 
 export function ExportDialog({ open, onOpenChange, onExport }: ExportDialogProps) {
   const [title, setTitle] = useState('');
   const [format, setFormat] = useState('html');
+  const [author, setAuthor] = useState('');
+  const [description, setDescription] = useState('');
 
   const handleExport = () => {
-    onExport(title, format);
+    onExport(title, format, author, description);
     onOpenChange(false);
     setTitle('');
     setFormat('html');
+    setAuthor('');
+    setDescription('');
   };
 
   const formatDescriptions = {
@@ -50,6 +53,32 @@ export function ExportDialog({ open, onOpenChange, onExport }: ExportDialogProps
                 placeholder="请输入导出文档的标题..."
               />
             </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="author" className="text-sm font-medium">
+                作者
+              </Label>
+              <Input
+                id="author"
+                value={author}
+                onChange={(e) => setAuthor(e.target.value)}
+                className="w-full"
+                placeholder="请输入作者名称（可选）..."
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="description" className="text-sm font-medium">
+                更多说明
+              </Label>
+              <textarea
+                id="description"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                className="w-full min-h-[100px] px-3 py-2 text-sm rounded-md border border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                placeholder="请输入更多说明信息（可选）..."
+              />
+            </div>
             
             <div className="space-y-2">
               <Label className="text-sm font-medium">
@@ -72,31 +101,17 @@ export function ExportDialog({ open, onOpenChange, onExport }: ExportDialogProps
                   </div>
                 ))}
               </RadioGroup>
+              <p className="text-sm text-gray-500 mt-2">
+                {formatDescriptions[format as keyof typeof formatDescriptions]}
+              </p>
             </div>
-
-            <Card className="p-4 bg-gray-50">
-              <div className="space-y-2">
-                <h4 className="font-medium text-sm">格式说明</h4>
-                <p className="text-sm text-gray-600">
-                  {formatDescriptions[format as keyof typeof formatDescriptions]}
-                </p>
-              </div>
-            </Card>
           </div>
         </div>
-        <DialogFooter className="sm:justify-end gap-2">
-          <Button
-            variant="outline"
-            onClick={() => onOpenChange(false)}
-            className="min-w-[100px]"
-          >
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
             取消
           </Button>
-          <Button
-            onClick={handleExport}
-            disabled={!title}
-            className="min-w-[100px]"
-          >
+          <Button onClick={handleExport} disabled={!title}>
             导出
           </Button>
         </DialogFooter>

@@ -16,15 +16,16 @@ interface ExportRequest {
   title: string;
   format: 'html' | 'pdf' | 'epub' | 'md';
   author?: string;
+  description?: string;
 }
 
 // 准备导航链接
-function prepareNavigation(contents: ExportRequest['contents'], currentIndex: number) {
+function prepareNavigation(contents: ExportRequest['contents'], currentIndex: number, timestamp: number) {
   const prev = currentIndex > 0 
-    ? `<a href="article_${currentIndex - 1}.html">上一篇: ${contents[currentIndex - 1].title}</a>` 
+    ? `<a href="${timestamp}_article_${currentIndex - 1}.html">上一篇: ${contents[currentIndex - 1].title}</a>` 
     : '';
   const next = currentIndex < contents.length - 1 
-    ? `<a href="article_${currentIndex + 1}.html">下一篇: ${contents[currentIndex + 1].title}</a>` 
+    ? `<a href="${timestamp}_article_${currentIndex + 1}.html">下一篇: ${contents[currentIndex + 1].title}</a>` 
     : '';
   const index = `<a href="index.html">返回目录</a>`;
 
@@ -36,7 +37,7 @@ function prepareNavigation(contents: ExportRequest['contents'], currentIndex: nu
 }
 
 // 准备单个文章的HTML内容
-function prepareArticleHtml(article: ExportRequest['contents'][0], contents: ExportRequest['contents'], index: number) {
+function prepareArticleHtml(article: ExportRequest['contents'][0], contents: ExportRequest['contents'], index: number, timestamp: number) {
   return `<!DOCTYPE html>
 <html>
 <head>
@@ -96,24 +97,24 @@ function prepareArticleHtml(article: ExportRequest['contents'][0], contents: Exp
   </style>
 </head>
 <body>
-  ${prepareNavigation(contents, index)}
+  ${prepareNavigation(contents, index, timestamp)}
   <article>
-    <h1>${article.title}</h1>
     ${article.content}
   </article>
   <div class="source-link">
     <p>原文链接：<a href="${article.url}" target="_blank">${article.url}</a></p>
   </div>
-  ${prepareNavigation(contents, index)}
+  ${prepareNavigation(contents, index, timestamp)}
 </body>
 </html>`;
 }
 
 // 准备目录页面
-function prepareIndexHtml(contents: ExportRequest['contents'], title: string) {
+function prepareIndexHtml(contents: ExportRequest['contents'], title: string, author?: string, description?: string) {
+  const timestamp = Date.now();
   const toc = contents.map((article, index) => 
     `<li>
-      <a href="article_${index}.html">${article.title}</a>
+      <a href="${timestamp}_article_${index}.html">${article.title}</a>
       <div class="article-url">${article.url}</div>
     </li>`
   ).join('\n');
@@ -156,11 +157,37 @@ function prepareIndexHtml(contents: ExportRequest['contents'], title: string) {
       font-size: 0.9em;
       margin-top: 0.5em;
     }
+    .meta-info {
+      margin: 2em 0;
+      padding: 1.5em;
+      background: #f8f9fa;
+      border-radius: 8px;
+      color: #444;
+    }
+    .meta-info h2 {
+      margin-top: 0;
+      color: #333;
+      font-size: 1.2em;
+    }
+    .meta-info p {
+      margin: 0.5em 0;
+    }
+    .meta-info .author {
+      font-style: italic;
+      color: #666;
+    }
   </style>
 </head>
 <body>
   <h1>${title}</h1>
-  <p>共收录 ${contents.length} 篇文章</p>
+  
+  <div class="meta-info">
+    ${author ? `<p class="author">作者：${author}</p>` : ''}
+    ${description ? `<p class="description">${description}</p>` : ''}
+    <p>导出时间：${new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}</p>
+    <p>共收录 ${contents.length} 篇文章</p>
+  </div>
+
   <ul class="toc">
     ${toc}
   </ul>
@@ -169,14 +196,14 @@ function prepareIndexHtml(contents: ExportRequest['contents'], title: string) {
 }
 
 // 准备单个 Markdown 文章
-function prepareMarkdownArticle(article: ExportRequest['contents'][0], index: number, totalArticles: number) {
+function prepareMarkdownArticle(article: ExportRequest['contents'][0], index: number, totalArticles: number, timestamp: number) {
   const navigation = [];
   if (index > 0) {
-    navigation.push(`[上一篇](article_${index - 1}.md)`);
+    navigation.push(`[上一篇](${timestamp}_article_${index - 1}.md)`);
   }
   navigation.push('[返回目录](index.md)');
   if (index < totalArticles - 1) {
-    navigation.push(`[下一篇](article_${index + 1}.md)`);
+    navigation.push(`[下一篇](${timestamp}_article_${index + 1}.md)`);
   }
 
   return `# ${article.title}
@@ -221,8 +248,10 @@ async function convertWithPercollate(htmlFile: string, format: 'pdf' | 'epub' | 
     if (author) {
       cmd += ` --author "${author}"`;
     }
-    // 对于 epub，我们需要传入所有 HTML 文件
     cmd += ` "${htmlFile}"`;
+  } else if (format === 'pdf') {
+    // PDF 格式特殊处理，添加 --no-toc 参数去除目录页
+    cmd += ` --no-toc --no-cover --output "${outputFile}" "${htmlFile}"`;
   } else {
     // 其他格式保持原样
     cmd += ` --output "${outputFile}" "${htmlFile}"`;
@@ -235,14 +264,15 @@ export async function POST(req: Request) {
   const tempDir = await createTempDir('wepub');
   
   try {
-    const { contents, title, format = 'html', author } = (await req.json()) as ExportRequest;
+    const { contents, title, format = 'html', author, description } = (await req.json()) as ExportRequest & { description?: string };
+    const timestamp = Date.now();
     
     // HTML 格式使用现有的 ZIP 导出逻辑
     if (format === 'html') {
       const zip = new JSZip();
-      zip.file('index.html', prepareIndexHtml(contents, title));
+      zip.file('index.html', prepareIndexHtml(contents, title, author, description));
       contents.forEach((article, index) => {
-        zip.file(`article_${index}.html`, prepareArticleHtml(article, contents, index));
+        zip.file(`${timestamp}_article_${index}.html`, prepareArticleHtml(article, contents, index, timestamp));
       });
       const zipBlob = await zip.generateAsync({type: 'nodebuffer'});
       return new Response(zipBlob, {
@@ -256,16 +286,25 @@ export async function POST(req: Request) {
     // Markdown 格式也使用 ZIP 导出
     if (format === 'md') {
       const zip = new JSZip();
-      // 如果有作者信息，添加到目录页面
-      const indexContent = author 
-        ? `# ${title}\n\n作者：${author}\n\n共收录 ${contents.length} 篇文章\n\n## 目录\n\n`
-        : `# ${title}\n\n共收录 ${contents.length} 篇文章\n\n## 目录\n\n`;
+      let indexContent = `# ${title}\n\n`;
+      
+      // 添加元信息
+      if (author) {
+        indexContent += `作者：${author}\n\n`;
+      }
+      if (description) {
+        indexContent += `${description}\n\n`;
+      }
+      indexContent += `导出时间：${new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}\n\n`;
+      indexContent += `共收录 ${contents.length} 篇文章\n\n`;
+      indexContent += `## 目录\n\n`;
+      
       zip.file('index.md', indexContent + contents.map((article, index) => 
-        `- [${article.title}](article_${index}.md) - [原文](${article.url})`
+        `- [${article.title}](${timestamp}_article_${index}.md) - [原文](${article.url})`
       ).join('\n'));
       
       contents.forEach((article, index) => {
-        zip.file(`article_${index}.md`, prepareMarkdownArticle(article, index, contents.length));
+        zip.file(`${timestamp}_article_${index}.md`, prepareMarkdownArticle(article, index, contents.length, timestamp));
       });
       const zipBlob = await zip.generateAsync({type: 'nodebuffer'});
       return new Response(zipBlob, {
@@ -279,7 +318,7 @@ export async function POST(req: Request) {
     // 其他格式需要使用 percollate 处理
     if (format === 'epub') {
       // 为每篇文章创建单独的HTML文件
-      const tocHtml = `
+      const coverHtml = `
         <!DOCTYPE html>
         <html>
         <head>
@@ -287,22 +326,49 @@ export async function POST(req: Request) {
           <title>${title}</title>
           <meta name="viewport" content="width=device-width, initial-scale=1.0">
           ${author ? `<meta name="author" content="${author}">` : ''}
+          <style>
+            body {
+              font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+              line-height: 1.6;
+              padding: 2em;
+              max-width: 50em;
+              margin: 0 auto;
+            }
+            .cover {
+              text-align: center;
+              padding: 3em 0;
+            }
+            .cover h1 {
+              font-size: 2.5em;
+              margin-bottom: 0.5em;
+            }
+            .meta-info {
+              margin: 2em auto;
+              max-width: 40em;
+              text-align: left;
+              color: #666;
+            }
+            .meta-info p {
+              margin: 0.5em 0;
+            }
+          </style>
         </head>
         <body>
-          <h1>${title}</h1>
-          ${author ? `<p class="author">作者：${author}</p>` : ''}
-          <h2>目录</h2>
-          <ul>
-            ${contents.map((article, index) => `
-              <li><a href="#article_${index}">${article.title}</a></li>
-            `).join('\n')}
-          </ul>
+          <div class="cover">
+            <h1>${title}</h1>
+            <div class="meta-info">
+              ${author ? `<p>作者：${author}</p>` : ''}
+              ${description ? `<p>${description}</p>` : ''}
+              <p>导出时间：${new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}</p>
+              <p>共收录 ${contents.length} 篇文章</p>
+            </div>
+          </div>
         </body>
         </html>
       `;
       
       const inputFile = join(tempDir, 'input.html');
-      await writeFile(inputFile, tocHtml);
+      await writeFile(inputFile, coverHtml);
       
       // 为每篇文章创建单独的HTML文件
       for (let i = 0; i < contents.length; i++) {
@@ -318,7 +384,6 @@ export async function POST(req: Request) {
           </head>
           <body>
             <article id="article_${i}">
-              <h1>${article.title}</h1>
               ${article.content}
               <p class="source-link">原文链接：<a href="${article.url}">${article.url}</a></p>
             </article>
@@ -464,10 +529,6 @@ export async function POST(req: Request) {
                 max-width: 50em;
                 margin: 0 auto;
               }
-              article h1 {
-                font-size: 2em;
-                margin-bottom: 1em;
-              }
               .source-link {
                 color: #666;
                 font-size: 0.9em;
@@ -477,7 +538,6 @@ export async function POST(req: Request) {
           </head>
           <body>
             <article id="article_${i}">
-              <h1>${article.title}</h1>
               ${article.content}
               <p class="source-link">原文链接：<a href="${article.url}">${article.url}</a></p>
             </article>

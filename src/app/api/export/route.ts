@@ -328,39 +328,69 @@ export async function POST(req: Request) {
           ${author ? `<meta name="author" content="${author}">` : ''}
           <style>
             body {
-              font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+              font-family: "Noto Serif SC", "Source Han Serif SC", "Source Han Serif", serif;
               line-height: 1.6;
-              padding: 2em;
-              max-width: 50em;
-              margin: 0 auto;
+              margin: 0;
+              padding: 0;
+              display: flex;
+              justify-content: center;
+              align-items: center;
+              min-height: 100vh;
+              background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
             }
             .cover {
               text-align: center;
-              padding: 3em 0;
+              padding: 4em 2em;
+              background: rgba(255, 255, 255, 0.9);
+              border-radius: 20px;
+              box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+              max-width: 80%;
+              margin: 2em;
             }
             .cover h1 {
               font-size: 2.5em;
-              margin-bottom: 0.5em;
+              margin: 0 0 0.5em;
+              color: #2d3748;
+              font-weight: 700;
+              line-height: 1.3;
             }
             .meta-info {
               margin: 2em auto;
               max-width: 40em;
-              text-align: left;
-              color: #666;
+              color: #4a5568;
             }
             .meta-info p {
-              margin: 0.5em 0;
+              margin: 0.7em 0;
+              font-size: 1.1em;
+            }
+            .author {
+              font-size: 1.4em;
+              color: #718096;
+              font-style: italic;
+              margin: 1em 0;
+            }
+            .divider {
+              width: 50px;
+              height: 3px;
+              background: #4a5568;
+              margin: 2em auto;
+            }
+            .stats {
+              font-size: 1em;
+              color: #718096;
+              margin-top: 2em;
             }
           </style>
         </head>
         <body>
           <div class="cover">
             <h1>${title}</h1>
+            ${author ? `<div class="author">${author}</div>` : ''}
+            <div class="divider"></div>
             <div class="meta-info">
-              ${author ? `<p>作者：${author}</p>` : ''}
               ${description ? `<p>${description}</p>` : ''}
-              <p>导出时间：${new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}</p>
-              <p>共收录 ${contents.length} 篇文章</p>
+              <p class="stats">收录文章：${contents.length} 篇</p>
+              <p class="stats">导出时间：${new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}</p>
             </div>
           </div>
         </body>
@@ -381,9 +411,28 @@ export async function POST(req: Request) {
             <title>${article.title}</title>
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
             ${author ? `<meta name="author" content="${author}">` : ''}
+            <style>
+              body {
+                font-family: "Noto Serif SC", "Source Han Serif SC", "Source Han Serif", serif;
+                line-height: 1.8;
+                padding: 2em;
+                max-width: 50em;
+                margin: 0 auto;
+              }
+              article {
+                margin-bottom: 3em;
+              }
+              .source-link {
+                color: #718096;
+                font-size: 0.9em;
+                margin-top: 2em;
+                padding-top: 1em;
+                border-top: 1px solid #e2e8f0;
+              }
+            </style>
           </head>
           <body>
-            <article id="article_${i}">
+            <article>
               ${article.content}
               <p class="source-link">原文链接：<a href="${article.url}">${article.url}</a></p>
             </article>

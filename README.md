@@ -2,188 +2,291 @@
 
 WePub 是一个基于 Next.js 构建的现代网页内容阅读优化工具。它能将任何网页转换为清晰、易读的文章格式，支持批量抓取和多种格式导出，让您的阅读体验更加舒适。
 
-## ✨ 功能模块详解
+## 📖 项目概述
 
-### 1. 🔗 网页内容抓取模块
-- **批量抓取功能**
-  - 支持同时抓取多个网页（单次最多50页）
-  - 可配置抓取等待时间和重试次数
-  - 支持断点续传
-  - 自动处理网页编码
-  
-- **智能内容识别**
-  - 基于 Mozilla Readability 的核心内容提取
-  - 智能过滤广告、导航栏、页脚等干扰元素
-  - 保留原文重要样式和图片资源
-  - 支持自定义内容过滤规则
+WePub 主要解决以下问题：
+- 网页内容阅读体验差
+- 多页面内容难以整合
+- 内容格式难以统一
+- 离线阅读需求难以满足
 
-- **抓取深度控制**
-  - 可配置1-10层的抓取深度
-  - 智能识别文章分页
-  - 自动发现相关文章链接
-  - 支持自定义URL过滤规则
+## 🏗️ 系统架构
 
-### 2. 📖 阅读体验优化模块
-- **版面优化**
-  - 自适应屏幕宽度的响应式布局
-  - 可调节字体大小和行间距
-  - 支持自定义字体
-  - 优化代码块和表格显示
+### 整体架构
 
-- **导航功能**
-  - 自动生成文章目录
-  - 快捷键支持
-  - 阅读进度保存
-  - 书签功能
+```mermaid
+graph TD
+    A[网页链接输入] --> B[内容抓取模块]
+    B --> C[内容优化模块]
+    C --> D[格式转换模块]
+    D --> E1[HTML]
+    D --> E2[PDF]
+    D --> E3[EPUB]
+    D --> E4[Markdown]
+```
 
-- **主题定制**
-  - 内置浅色/深色主题
-  - 支持自定义主题色
-  - 多种预设主题方案
-  - 护眼模式
+### 内容处理流程
 
-### 3. 💾 格式转换导出模块
-- **HTML导出**
-  - 生成完整的静态网页包
-  - 自动打包为ZIP格式
-  - 包含目录导航
-  - 离线可用
+```mermaid
+sequenceDiagram
+    participant U as 用户
+    participant C as 内容抓取器
+    participant P as 内容处理器
+    participant E as 导出转换器
+    
+    U->>C: 提供网页链接
+    C->>C: 批量抓取内容
+    C->>P: 原始HTML内容
+    P->>P: Readability处理
+    P->>P: 内容清洗
+    P->>E: 结构化内容
+    E->>E: 格式转换
+    E->>U: 返回导出文件
+```
 
-- **PDF导出**
-  - 自动生成目录书签
-  - 支持自定义页面大小
-  - 可配置页眉页脚
-  - 支持水印添加
+### 模块结构
 
-- **EPUB生成**
-  - 标准EPUB 3.0格式
-  - 自动生成封面
-  - 支持目录导航
-  - 兼容主流阅读器
+```mermaid
+classDiagram
+    %% 接口定义
+    class FormatConverter {
+        <<interface>>
+        +convert(content, options) Promise<Buffer>
+    }
+    class FileSystem {
+        <<interface>>
+        +writeFile(path, content) Promise<void>
+        +readFile(path) Promise<Buffer>
+        +createTempDir(prefix) Promise<string>
+        +cleanup(path) Promise<void>
+    }
+    
+    %% 核心类
+    class BaseConverter {
+        <<abstract>>
+        #fileSystem: FileSystem
+        #templateService: TemplateService
+        +convert(content, options)* Promise<Buffer>
+        #handleError(error, code, message) never
+    }
+    
+    %% 服务类
+    class FileSystemService {
+        +writeFile(path, content) Promise<void>
+        +readFile(path) Promise<Buffer>
+        +createTempDir(prefix) Promise<string>
+        +cleanup(path) Promise<void>
+    }
+    class TemplateService {
+        +generateArticleHtml(article, contents, index, timestamp) string
+        +generateCoverHtml(content) string
+        +generateTocHtml(content, timestamp) string
+        +prepareNavigation(contents, currentIndex, timestamp) string
+    }
+    class ExportFactory {
+        -fileSystem: FileSystemService
+        -templateService: TemplateService
+        +createConverter(format) FormatConverter
+    }
+    
+    %% 转换器实现
+    class HTMLConverter {
+        +convert(content, options) Promise<Buffer>
+    }
+    class PDFConverter {
+        +convert(content, options) Promise<Buffer>
+    }
+    class EPUBConverter {
+        +convert(content, options) Promise<Buffer>
+    }
+    class MarkdownConverter {
+        +convert(content, options) Promise<Buffer>
+    }
+    
+    %% 错误处理
+    class ExportError {
+        +code: ExportErrorCode
+        +message: string
+        +details?: unknown
+    }
+    
+    %% 关系定义
+    FormatConverter <|.. BaseConverter
+    FileSystem <|.. FileSystemService
+    BaseConverter <|-- HTMLConverter
+    BaseConverter <|-- PDFConverter
+    BaseConverter <|-- EPUBConverter
+    BaseConverter <|-- MarkdownConverter
+    BaseConverter o-- FileSystem
+    BaseConverter o-- TemplateService
+    ExportFactory ..> FormatConverter
+    ExportFactory o-- FileSystemService
+    ExportFactory o-- TemplateService
+    Error <|-- ExportError
+```
 
-- **Markdown转换**
-  - 保留文章结构
-  - 图片本地化处理
-  - 支持扩展语法
-  - 便于二次编辑
+## 🛠️ 技术栈
 
-## 🛠️ 技术架构
+- **前端框架**：Next.js 14 (App Router)
+- **样式方案**：Tailwind CSS + shadcn/ui
+- **内容处理**：Mozilla Readability
+- **文档转换**：Percollate
+- **类型系统**：TypeScript
+- **部署平台**：Vercel
 
-### 前端技术栈
-- **Next.js 14**: 
-  - 采用 App Router 架构
-  - 服务端组件渲染
-  - 路由预加载
-  - API 路由集成
+## 📦 项目结构
 
-- **Tailwind CSS**: 
-  - 原子化CSS方案
-  - 响应式设计支持
-  - 主题配置系统
-  - 暗色模式支持
+```
+src/
+├── app/                    # Next.js 应用目录
+│   ├── api/               # API 路由
+│   │   └── export/       # 导出相关接口
+│   │       └── route.ts  # 导出处理路由
+│   │   └── crawl/        # 抓取相关接口
+│   │       └── route.ts  # 抓取处理路由
+│   │   └── parse/        # 解析相关接口
+│   │       └── route.ts  # 解析处理路由
+│   └── page.tsx          # 主页面
+├── components/            # React 组件
+│   ├── ArticleConverter.tsx # 文章转换器组件
+│   ├── ExportDialog.tsx     # 导出对话框组件
+│   ├── SiteCrawler.tsx # 网站抓取器组件
+│   ├── ThemeProvider.tsx # 主题提供者组件
+│   ├── ThemeToggle.tsx # 主题切换组件
+│   └── ui/               # UI 基础组件
+├── core/                  # 核心接口和类型定义
+│   ├── errors/           # 错误处理
+│   │   └── export.error.ts # 导出相关错误定义
+│   └── interfaces/       # 接口定义
+│       ├── content.interface.ts    # 内容相关接口
+│       └── converter.interface.ts  # 转换器接口
+├── services/             # 服务层
+│   ├── converters/      # 格式转换器
+│   │   ├── base.converter.ts    # 基础转换器
+│   │   ├── html.converter.ts    # HTML转换器
+│   │   ├── pdf.converter.ts     # PDF转换器
+│   │   ├── epub.converter.ts    # EPUB转换器
+│   │   └── markdown.converter.ts # Markdown转换器
+│   ├── export.factory.ts # 导出工厂
+│   ├── file.service.ts  # 文件服务
+│   └── template.service.ts # 模板服务
+└── styles/              # 样式定义
+    └── index.ts        # 样式导出
+```
 
-- **shadcn/ui**: 
-  - 可定制组件库
-  - 无障碍支持
-  - 动画效果
-  - 主题集成
+### 目录说明
 
-- **Mozilla Readability**: 
-  - 核心内容提取
-  - 智能广告过滤
-  - 格式保留
-  - 多语言支持
+#### 1. `src/` - 源代码目录
+- **app/**: Next.js 应用主目录，包含页面和API路由
+- **components/**: React 组件库，包含 UI 基础组件和业务组件
+- **core/**: 核心接口和类型定义，确保系统的可扩展性
+- **services/**: 业务服务层，包含各种格式转换器和工具服务
+- **styles/**: 全局样式定义，包含各种主题和组件样式
 
-### 后端服务
-- **Next.js API Routes**: 
-  - RESTful API设计
-  - 中间件支持
-  - 错误处理
-  - 速率限制
+### 关键文件说明
 
-- **Vercel部署**: 
-  - 自动化部署
-  - CDN加速
-  - 实时日志
-  - 性能监控
+1. **转换器相关**
+   - `base.converter.ts`: 定义基础转换器抽象类
+   - `html.converter.ts`: HTML格式转换实现
+   - `pdf.converter.ts`: PDF格式转换实现
+   - `epub.converter.ts`: EPUB格式转换实现
+   - `markdown.converter.ts`: Markdown格式转换实现
 
-## 📦 详细安装指南
+2. **服务类**
+   - `export.factory.ts`: 转换器工厂，负责创建对应格式的转换器
+   - `file.service.ts`: 文件操作服务，处理文件读写
+   - `template.service.ts`: 模板服务，生成各种格式的模板
+
+3. **接口定义**
+   - `content.interface.ts`: 内容相关接口定义
+   - `converter.interface.ts`: 转换器接口定义
+
+4. **错误处理**
+   - `export.error.ts`: 导出相关错误类型定义
+
+## 🚀 安装指南
 
 ### 环境要求
-- Node.js 18.0+
-- npm 8.0+ 或 yarn 1.22+
-- Git 2.0+
-- 推荐使用 VSCode 编辑器
 
-### 1. 环境准备
-```bash
-# 检查 Node.js 版本
-node -v
+- Node.js >= 18.0
+- npm >= 8.0 或 yarn >= 1.22
+- Git >= 2.0
+- percollate (用于PDF和EPUB转换)
 
-# 检查 npm 版本
-npm -v
+### 安装步骤
 
-# 如需升级 npm
-npm install -g npm@latest
-```
+1. **安装 Node.js 和 npm**
+   ```bash
+   # 检查版本
+   node -v
+   npm -v
+   ```
 
-### 2. 获取项目代码
-```bash
-# 克隆项目
-git clone https://github.com/yourusername/wepub.git
+2. **安装 percollate**
+   ```bash
+   npm install -g percollate
+   ```
 
-# 进入项目目录
-cd wepub
+3. **克隆项目**
+   ```bash
+   git clone https://github.com/yourusername/wepub.git
+   cd wepub
+   ```
 
-# 切换到开发分支（可选）
-git checkout develop
-```
+4. **安装依赖**
+   ```bash
+   npm install
+   # 或
+   yarn install
+   ```
 
-### 3. 依赖安装
-```bash
-# 使用 npm
-npm install
+5. **环境配置**
+   ```bash
+   # 复制环境变量模板
+   cp .env.example .env.local
+   
+   # 编辑环境变量
+   vim .env.local
+   ```
 
-# 或使用 yarn
-yarn install
+6. **启动开发服务器**
+   ```bash
+   npm run dev
+   # 或
+   yarn dev
+   ```
 
-# 如果遇到依赖安装问题，可以尝试清除缓存
-npm clean-cache
-npm install
-```
+7. **构建生产版本**
+   ```bash
+   npm run build
+   npm start
+   ```
 
-### 4. 开发服务器
-```bash
-# 开发环境启动
-npm run dev
+## 💻 开发指南
 
-# 或使用 yarn
-yarn dev
+### 代码规范
 
-# 生产环境构建
-npm run build
-
-# 生产环境运行
-npm start
-```
-
-访问 http://localhost:4000 查看应用
-
-### 5. 开发建议
-- 启用 ESLint 进行代码检查
+- 使用 ESLint 进行代码检查
 - 使用 Prettier 进行代码格式化
 - 遵循 TypeScript 类型检查
-- 定期更新依赖包版本
 
-## 🚀 部署指南
+### 转换器开发
 
-### Vercel 部署流程
-1. Fork 项目到个人 GitHub
-2. 注册/登录 Vercel 账号
-3. 在 Vercel 控制台中选择 "Import Project"
-4. 选择已 Fork 的项目仓库
-5. 配置环境变量
-6. 点击部署
+如需添加新的导出格式，需要：
+
+1. 在 `src/core/interfaces/converter.interface.ts` 中定义接口
+2. 在 `src/services/converters/` 下创建新的转换器类
+3. 继承 `BaseConverter` 类并实现 `convert` 方法
+4. 在 `ExportFactory` 中注册新的转换器
+
+示例：
+```typescript
+export class NewFormatConverter extends BaseConverter {
+  async convert(content: Content, options?: ConvertOptions): Promise<Buffer> {
+    // 实现转换逻辑
+  }
+}
+```
 
 ## 🤝 贡献指南
 
@@ -193,13 +296,8 @@ npm start
 4. 推送到分支 (`git push origin feature/AmazingFeature`)
 5. 提交 Pull Request
 
-### 代码规范
-- 遵循 ESLint 配置规则
-- 使用 TypeScript 类型注解
-- 编写单元测试
-- 保持代码简洁清晰
-
 ### 提交规范
+
 - feat: 新功能
 - fix: 修复问题
 - docs: 文档修改
@@ -218,6 +316,4 @@ npm start
 - [Tailwind CSS](https://tailwindcss.com/)
 - [shadcn/ui](https://ui.shadcn.com/)
 - [Mozilla Readability](https://github.com/mozilla/readability)
-- [Vercel](https://vercel.com/)
-- [TypeScript](https://www.typescriptlang.org/)
 - [Percollate](https://github.com/danburzo/percollate)

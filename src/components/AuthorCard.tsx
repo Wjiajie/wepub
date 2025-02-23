@@ -18,21 +18,21 @@ import { UserCircle } from "lucide-react"
 
 const socialLinks = [
   {
-    name: "即刻",
+    name: "作者联系方式",
     username: "@jiajiewu_ponder",
     url: "https://jike.city/jiajiewu_ponder",
     icon: "🎯"
   },
   {
-    name: "博客",
+    name: "wepub-blog",
     username: "@ponder",
-    url: "https://www.jiajiewu.top",
+    url: "https://www.jiajiewu.top/blog/wepub-covert-web-to-book",
     icon: "📝"
   },
   {
-    name: "GitHub",
+    name: "wepub gitHub链接",
     username: "@Wjiajie",
-    url: "https://github.com/Wjiajie",
+    url: "https://github.com/Wjiajie/wepub",
     icon: "🐱"
   }
 ]

@@ -235,23 +235,14 @@ src/
    yarn install
    ```
 
-4. **环境配置**
-   ```bash
-   # 复制环境变量模板
-   cp .env.example .env.local
-   
-   # 编辑环境变量
-   vim .env.local
-   ```
-
-5. **启动开发服务器**
+4. **启动开发服务器**
    ```bash
    npm run dev
    # 或
    yarn dev
    ```
 
-6. **构建生产版本**
+5. **构建生产版本**
    ```bash
    npm run build
    npm start

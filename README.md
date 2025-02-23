@@ -222,25 +222,20 @@ src/
    npm -v
    ```
 
-2. **安装 percollate**
-   ```bash
-   npm install -g percollate
-   ```
-
-3. **克隆项目**
+2. **克隆项目**
    ```bash
    git clone https://github.com/yourusername/wepub.git
    cd wepub
    ```
 
-4. **安装依赖**
+3. **安装依赖**
    ```bash
    npm install
    # 或
    yarn install
    ```
 
-5. **环境配置**
+4. **环境配置**
    ```bash
    # 复制环境变量模板
    cp .env.example .env.local
@@ -249,14 +244,14 @@ src/
    vim .env.local
    ```
 
-6. **启动开发服务器**
+5. **启动开发服务器**
    ```bash
    npm run dev
    # 或
    yarn dev
    ```
 
-7. **构建生产版本**
+6. **构建生产版本**
    ```bash
    npm run build
    npm start

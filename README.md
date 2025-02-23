@@ -2,6 +2,10 @@
 
 WePub 是一个基于 Next.js 构建的现代网页内容阅读优化工具。它能将任何网页转换为清晰、易读的文章格式，支持批量抓取和多种格式导出，让您的阅读体验更加舒适。
 
+* [在线demo](https://wepub.vercel.app/)
+
+* [博客文章](https://www.jiajiewu.top/blog/wepub-covert-web-to-book)
+
 ## 📖 项目概述
 
 WePub 主要解决以下问题：

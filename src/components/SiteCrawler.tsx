@@ -229,7 +229,7 @@ export function SiteCrawler() {
     return index >= start && index <= end;
   };
 
-  const handleExport = async (title: string, format: string, author: string, description: string) => {
+  const handleExport = async (title: string, format: string, author: string, description: string, coverImage: string) => {
     if (!results || selectedArticles.size === 0) return;
     
     setIsExporting(true);
@@ -250,7 +250,8 @@ export function SiteCrawler() {
           format,
           title,
           author,
-          description
+          description,
+          coverImage
         }),
       });
 

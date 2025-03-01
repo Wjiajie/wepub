@@ -23,6 +23,7 @@ export interface Content {
   title: string;
   author?: string;
   description?: string;
+  coverImage?: string;
 }
 
 export interface ExportOptions {
@@ -30,4 +31,5 @@ export interface ExportOptions {
   title: string;
   author?: string;
   description?: string;
+  coverImage?: string;
 } 

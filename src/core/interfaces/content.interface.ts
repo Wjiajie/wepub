@@ -4,6 +4,20 @@ export interface Article {
   content: string;
 }
 
+export interface RSSItem {
+  title: string;
+  link: string;
+  description?: string;
+  pubDate?: string;
+  author?: string;
+}
+
+export interface RSSFeed {
+  title: string;
+  description?: string;
+  items: RSSItem[];
+}
+
 export interface Content {
   contents: Article[];
   title: string;

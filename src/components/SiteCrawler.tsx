@@ -38,8 +38,10 @@ interface CrawlResponse {
 
 export function SiteCrawler() {
   const [url, setUrl] = useState('');
-  const [maxPages, setMaxPages] = useState(10);
+  const [maxPages, setMaxPages] = useState(-1);
   const [maxDepth, setMaxDepth] = useState(3);
+  const [concurrencyLimit, setConcurrencyLimit] = useState(1);
+  const [isRSSMode, setIsRSSMode] = useState(false);
   const [results, setResults] = useState<CrawlResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -50,8 +52,11 @@ export function SiteCrawler() {
   const [isErrorDialogOpen, setIsErrorDialogOpen] = useState(false);
   const [keepHistory, setKeepHistory] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  const [isRangeSelecting, setIsRangeSelecting] = useState(false);
+  const [rangeStartIndex, setRangeStartIndex] = useState<number | null>(null);
+  const [rangeEndIndex, setRangeEndIndex] = useState<number | null>(null);
+  const [isAltPressed, setIsAltPressed] = useState(false);
 
-  // 在组件挂载时从 localStorage 加载用户偏好和历史数据
   useEffect(() => {
     const saved = localStorage?.getItem('keepHistory');
     if (saved) {
@@ -63,19 +68,39 @@ export function SiteCrawler() {
     }
   }, []);
 
-  // 当 keepHistory 变化时保存到 localStorage
   useEffect(() => {
     if (typeof window !== 'undefined') {
       localStorage.setItem('keepHistory', JSON.stringify(keepHistory));
     }
   }, [keepHistory]);
 
-  // 当结果变化时，如果开启了历史保留，则保存到 localStorage
   useEffect(() => {
     if (typeof window !== 'undefined' && results && keepHistory) {
       localStorage.setItem('crawlResults', JSON.stringify(results));
     }
   }, [results, keepHistory]);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Alt') {
+        setIsAltPressed(true);
+      }
+    };
+
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (e.key === 'Alt') {
+        setIsAltPressed(false);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+    };
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -86,12 +111,15 @@ export function SiteCrawler() {
     setIsErrorDialogOpen(false);
 
     try {
-      const response = await fetch('/api/crawl', {
+      const endpoint = isRSSMode ? '/api/rss' : '/api/crawl';
+      const requestBody = isRSSMode ? { url } : { url, maxPages, maxDepth, concurrencyLimit };
+      
+      const response = await fetch(endpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ url, maxPages, maxDepth }),
+        body: JSON.stringify(requestBody),
       });
 
       const data = await response.json();
@@ -109,17 +137,13 @@ export function SiteCrawler() {
         setIsErrorDialogOpen(true);
       }
 
-      // 如果保留历史，合并新旧结果
       if (keepHistory && results) {
-        // 创建一个Set来存储已有的URL
         const existingUrls = new Set(results.results.map((r: CrawlResult) => r.url));
-        // 过滤掉已存在的URL
         const newResults = data.results.filter((r: CrawlResult) => !existingUrls.has(r.url));
         
         const combinedResults = {
           ...data,
           totalProcessed: data.totalProcessed + results.totalProcessed,
-          // 只计算新增的成功数量
           successCount: results.successCount + newResults.length,
           results: [...results.results, ...newResults],
           errors: [...(results.errors || []), ...(data.errors || [])],
@@ -158,12 +182,58 @@ export function SiteCrawler() {
     setSelectedArticles(newSelected);
   };
 
+  const handleRangeSelectStart = (index: number) => {
+    setIsRangeSelecting(true);
+    setRangeStartIndex(index);
+    setRangeEndIndex(index);
+  };
+
+  const handleRangeSelectMove = (index: number) => {
+    if (isRangeSelecting && rangeStartIndex !== null) {
+      setRangeEndIndex(index);
+    }
+  };
+
+  const handleRangeSelectEnd = () => {
+    if (isRangeSelecting && rangeStartIndex !== null && rangeEndIndex !== null && results) {
+      if (rangeStartIndex !== rangeEndIndex) {
+        const newSelected = new Set(selectedArticles);
+        const start = Math.min(rangeStartIndex, rangeEndIndex);
+        const end = Math.max(rangeStartIndex, rangeEndIndex);
+        
+        const shouldSelect = !selectedArticles.has(rangeStartIndex);
+        
+        for (let i = start; i <= end; i++) {
+          if (shouldSelect) {
+            newSelected.add(i);
+          } else {
+            newSelected.delete(i);
+          }
+        }
+        
+        setSelectedArticles(newSelected);
+      }
+      
+      setIsRangeSelecting(false);
+      setRangeStartIndex(null);
+      setRangeEndIndex(null);
+    }
+  };
+
+  const isInSelectionRange = (index: number): boolean => {
+    if (!isRangeSelecting || rangeStartIndex === null || rangeEndIndex === null) {
+      return false;
+    }
+    const start = Math.min(rangeStartIndex, rangeEndIndex);
+    const end = Math.max(rangeStartIndex, rangeEndIndex);
+    return index >= start && index <= end;
+  };
+
   const handleExport = async (title: string, format: string, author: string, description: string) => {
     if (!results || selectedArticles.size === 0) return;
     
     setIsExporting(true);
     try {
-      // 获取选中文章的内容
       const selectedContents = Array.from(selectedArticles).map(index => ({
         url: results.results[index].url,
         title: results.results[index].article.title,
@@ -189,7 +259,6 @@ export function SiteCrawler() {
         throw new Error(error.error || '导出失败');
       }
 
-      // 处理文件下载
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -210,142 +279,114 @@ export function SiteCrawler() {
   };
 
   return (
-    <div className="max-w-5xl mx-auto space-y-8">
-      {/* 主要输入区域 */}
-      <Card>
-        <CardHeader className="text-center">
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-6">
-            <div className="space-y-2">
-              <label htmlFor="url" className="text-sm font-medium text-gray-700">
-                网站URL
-              </label>
-              <Input
-                id="url"
-                type="url"
-                value={url}
-                onChange={(e) => setUrl(e.target.value)}
-                placeholder="输入网站URL..."
-                required
-                className="w-full"
-              />
-              <p className="text-sm text-gray-500">
-                提示：输入网站的根URL，系统会自动爬取其下的所有子页面
-              </p>
-            </div>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="space-y-2">
-                <label htmlFor="maxPages" className="text-sm font-medium text-gray-700">
-                  最大页面数量
-                </label>
-                <Input
-                  id="maxPages"
-                  type="number"
-                  value={maxPages}
-                  onChange={(e) => setMaxPages(Number(e.target.value))}
-                  min="1"
-                  max="50"
-                  className="w-full"
-                />
-                <p className="text-sm text-gray-500">
-                  限制爬取的总页面数量（1-50）
-                </p>
-              </div>
-
-              <div className="space-y-2">
-                <label htmlFor="maxDepth" className="text-sm font-medium text-gray-700">
-                  递归深度
-                </label>
-                <Input
-                  id="maxDepth"
-                  type="number"
-                  value={maxDepth}
-                  onChange={(e) => setMaxDepth(Number(e.target.value))}
-                  min="1"
-                  max="10"
-                  className="w-full"
-                />
-                <p className="text-sm text-gray-500">
-                  限制递归查找的层级（1-10）
-                </p>
-              </div>
-            </div>
-
+    <div className="space-y-6">
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div className="flex flex-col space-y-4">
+          <div className="flex gap-2">
+            <Input
+              type="url"
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              placeholder={isRSSMode ? "输入RSS源URL..." : "输入网页URL..."}
+              required
+              className="flex-1"
+            />
+            <Button type="submit" disabled={loading}>
+              {loading ? '处理中...' : '开始'}
+            </Button>
+          </div>
+          
+          <div className="flex items-center space-x-4">
             <div className="flex items-center space-x-2">
               <Checkbox
-                id="keepHistory"
+                id="rss-mode"
+                checked={isRSSMode}
+                onCheckedChange={(checked) => setIsRSSMode(checked as boolean)}
+              />
+              <label
+                htmlFor="rss-mode"
+                className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+              >
+                RSS源模式
+              </label>
+            </div>
+            
+            {!isRSSMode && (
+              <>
+                <div className="flex items-center space-x-2">
+                  <label htmlFor="max-pages" className="text-sm">最大页数:</label>
+                  <Input
+                    id="max-pages"
+                    type="number"
+                    value={maxPages}
+                    onChange={(e) => setMaxPages(parseInt(e.target.value))}
+                    min="-1"
+                    max="100"
+                    className="w-20"
+                  />
+                  <span className="text-xs text-gray-500">(-1表示无限制)</span>
+                </div>
+                
+                <div className="flex items-center space-x-2">
+                  <label htmlFor="max-depth" className="text-sm">最大深度:</label>
+                  <Input
+                    id="max-depth"
+                    type="number"
+                    value={maxDepth}
+                    onChange={(e) => setMaxDepth(parseInt(e.target.value))}
+                    min="1"
+                    max="10"
+                    className="w-20"
+                  />
+                </div>
+
+                <div className="flex items-center space-x-2">
+                  <label htmlFor="concurrency-limit" className="text-sm">并发数:</label>
+                  <Input
+                    id="concurrency-limit"
+                    type="number"
+                    value={concurrencyLimit}
+                    onChange={(e) => setConcurrencyLimit(parseInt(e.target.value))}
+                    min="1"
+                    max="8"
+                    className="w-20"
+                  />
+                  <span className="text-xs text-gray-500">(大于1时不保证顺序)</span>
+                </div>
+              </>
+            )}
+            
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="keep-history"
                 checked={keepHistory}
                 onCheckedChange={(checked) => setKeepHistory(checked as boolean)}
               />
               <label
-                htmlFor="keepHistory"
+                htmlFor="keep-history"
                 className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
               >
-                保留历史内容（刷新页面不会丢失）
+                保留历史记录
               </label>
             </div>
-
-            <Button
-              type="submit"
-              disabled={loading}
-              className="w-full h-12 text-base"
-            >
-              {loading ? (
-                <div className="flex items-center space-x-2">
-                  <div className="w-5 h-5 border-t-2 border-b-2 border-white rounded-full animate-spin"></div>
-                  <span>爬取中...</span>
-                </div>
-              ) : (
-                '开始爬取'
-              )}
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
-
-      {/* 错误提示对话框 */}
-      <Dialog open={isErrorDialogOpen} onOpenChange={setIsErrorDialogOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle className="text-red-600">
-              {error || '爬取失败'}
-            </DialogTitle>
-          </DialogHeader>
-          <div className="mt-4 space-y-4">
-            <div className="bg-red-50 p-4 rounded-lg">
-              <pre className="whitespace-pre-wrap text-sm text-red-800">
-                {errorDetail || '未知错误'}
-              </pre>
-            </div>
-            {results?.errors && results.errors.length > 0 && (
-              <div className="space-y-3">
-                <h4 className="font-medium">各页面详细错误：</h4>
-                <div className="max-h-60 overflow-y-auto space-y-2">
-                  {results.errors.map((error, index) => (
-                    <Card key={index}>
-                      <CardContent className="p-3">
-                        <p className="font-medium text-sm text-gray-700 mb-1">
-                          {error.url}
-                        </p>
-                        <p className="text-sm text-red-600 mb-1">{error.error}</p>
-                        {error.errorDetail && (
-                          <pre className="text-xs text-gray-600 whitespace-pre-wrap">
-                            {error.errorDetail}
-                          </pre>
-                        )}
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
-              </div>
-            )}
           </div>
-        </DialogContent>
-      </Dialog>
+        </div>
+      </form>
 
-      {/* 结果展示区域 */}
+      {error && (
+        <Dialog open={isErrorDialogOpen} onOpenChange={setIsErrorDialogOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>错误</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-2">
+              <p className="text-red-500">{error}</p>
+              {errorDetail && <p className="text-sm text-gray-500">{errorDetail}</p>}
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
+
       {results && (
         <div className="space-y-6">
           <Card>
@@ -396,28 +437,87 @@ export function SiteCrawler() {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <Card>
-              <CardHeader>
-                <CardTitle className="text-lg font-medium">已解析的页面</CardTitle>
+              <CardHeader className="pb-2">
+                <div className="flex justify-between items-center">
+                  <CardTitle>已解析的页面</CardTitle>
+                  <div className="flex items-center space-x-2">
+                    <div className="text-sm text-gray-500">
+                      已选择: {selectedArticles.size}/{results.results.length}
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={toggleSelectAll}
+                    >
+                      {selectedArticles.size === results.results.length ? '取消全选' : '全选'}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setSelectedArticles(new Set())}
+                      disabled={selectedArticles.size === 0}
+                    >
+                      清除选择
+                    </Button>
+                  </div>
+                </div>
+                <div className="text-sm text-gray-500 mt-2">
+                  <p>操作指南:</p>
+                  <ul className="list-disc pl-5 text-xs space-y-1">
+                    <li>单击文章或复选框可选中/取消选中</li>
+                    <li>按住Alt键，点击鼠标左键并拖动鼠标可批量选择文章</li>
+                    <li>拖动选择时，将以起始文章的相反状态设置范围内所有文章</li>
+                  </ul>
+                </div>
               </CardHeader>
               <CardContent className="p-4">
-                <div className="space-y-2 max-h-[600px] overflow-y-auto">
+                <div 
+                  className="space-y-2 max-h-[600px] overflow-y-auto"
+                  onMouseUp={handleRangeSelectEnd}
+                  onMouseLeave={handleRangeSelectEnd}
+                >
                   {results.results.map((result, index) => (
                     <div
                       key={`${result.url}-${index}`}
-                      className="flex items-center space-x-3 p-3 hover:bg-gray-50 rounded-lg transition-colors"
+                      className={`flex items-center space-x-3 p-3 rounded-lg transition-colors ${
+                        isInSelectionRange(index) ? 'bg-blue-50' : 'hover:bg-gray-50'
+                      } ${isAltPressed ? 'cursor-crosshair' : ''}`}
+                      onMouseDown={(e) => {
+                        if (e.button === 0 && isAltPressed) {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          handleRangeSelectStart(index);
+                        }
+                      }}
+                      onMouseOver={() => handleRangeSelectMove(index)}
                     >
-                      <Checkbox
-                        checked={selectedArticles.has(index)}
-                        onCheckedChange={() => toggleArticle(index)}
-                      />
+                      <div 
+                        className="flex items-center justify-center"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleArticle(index);
+                        }}
+                      >
+                        <Checkbox
+                          checked={selectedArticles.has(index)}
+                        />
+                      </div>
                       <button
-                        onClick={() => setSelectedArticleIndex(index)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleArticle(index);
+                          setSelectedArticleIndex(index);
+                        }}
                         className={`flex-1 text-left p-2 rounded-md transition-colors ${
                           selectedArticleIndex === index ? 'bg-gray-100' : ''
                         }`}
                       >
-                        <div className="font-medium truncate">{result.article.title}</div>
-                        <div className="text-sm text-gray-500 truncate mt-1">{result.url}</div>
+                        <div className="font-medium truncate">
+                          {result?.article?.title || '无标题'}
+                        </div>
+                        <div className="text-sm text-gray-500 truncate mt-1">
+                          {result?.url || '无链接'}
+                        </div>
                       </button>
                     </div>
                   ))}
@@ -427,16 +527,16 @@ export function SiteCrawler() {
 
             <Card>
               <CardHeader>
-                <CardTitle className="text-lg font-medium">文章预览</CardTitle>
+                <CardTitle>文章预览</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="prose prose-sm max-h-[600px] overflow-y-auto">
-                  {selectedArticleIndex !== null ? (
+                  {selectedArticleIndex !== null && results.results[selectedArticleIndex] ? (
                     <>
                       <h1 className="text-xl font-bold mb-4">
-                        {results.results[selectedArticleIndex].article.title}
+                        {results.results[selectedArticleIndex]?.article?.title || '无标题'}
                       </h1>
-                      {results.results[selectedArticleIndex].article.byline && (
+                      {results.results[selectedArticleIndex]?.article?.byline && (
                         <p className="text-gray-600 text-sm mb-4">
                           {results.results[selectedArticleIndex].article.byline}
                         </p>
@@ -444,7 +544,7 @@ export function SiteCrawler() {
                       <div
                         className="mt-4"
                         dangerouslySetInnerHTML={{
-                          __html: results.results[selectedArticleIndex].article.content,
+                          __html: results.results[selectedArticleIndex]?.article?.content || '无内容'
                         }}
                       />
                     </>

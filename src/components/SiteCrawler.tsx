@@ -21,6 +21,14 @@ interface CrawlResult {
   success: boolean;
 }
 
+interface RSSLink {
+  url: string;
+  title: string;
+  description?: string;
+  pubDate?: string;
+  author?: string;
+}
+
 interface CrawlError {
   url: string;
   error: string;
@@ -34,6 +42,18 @@ interface CrawlResponse {
   error?: string;
   errorDetail?: string;
   errors?: CrawlError[];
+}
+
+interface RSSResponse {
+  feed: {
+    title: string;
+    description?: string;
+  };
+  links: RSSLink[];
+  totalLinks: number;
+  returnedLinks: number;
+  error?: string;
+  errorDetail?: string;
 }
 
 export function SiteCrawler() {
@@ -76,7 +96,14 @@ export function SiteCrawler() {
 
   useEffect(() => {
     if (typeof window !== 'undefined' && results && keepHistory) {
-      localStorage.setItem('crawlResults', JSON.stringify(results));
+      try {
+        // 直接存储完整结果，不限制数量
+        localStorage.setItem('crawlResults', JSON.stringify(results));
+      } catch (error) {
+        console.error('保存历史记录失败:', error);
+        // 如果存储失败，自动关闭历史记录功能
+        setKeepHistory(false);
+      }
     }
   }, [results, keepHistory]);
 
@@ -109,10 +136,11 @@ export function SiteCrawler() {
     setErrorDetail(null);
     setSelectedArticleIndex(null);
     setIsErrorDialogOpen(false);
+    setSelectedArticles(new Set());
 
     try {
       const endpoint = isRSSMode ? '/api/rss' : '/api/crawl';
-      const requestBody = isRSSMode ? { url } : { url, maxPages, maxDepth, concurrencyLimit };
+      const requestBody = isRSSMode ? { url, maxPages, parseContent: true } : { url, maxPages, maxDepth, concurrencyLimit };
       
       const response = await fetch(endpoint, {
         method: 'POST',
@@ -137,20 +165,79 @@ export function SiteCrawler() {
         setIsErrorDialogOpen(true);
       }
 
-      if (keepHistory && results) {
-        const existingUrls = new Set(results.results.map((r: CrawlResult) => r.url));
-        const newResults = data.results.filter((r: CrawlResult) => !existingUrls.has(r.url));
-        
-        const combinedResults = {
-          ...data,
-          totalProcessed: data.totalProcessed + results.totalProcessed,
-          successCount: results.successCount + newResults.length,
-          results: [...results.results, ...newResults],
-          errors: [...(results.errors || []), ...(data.errors || [])],
-        };
-        setResults(combinedResults);
+      // 处理RSS模式的响应
+      if (isRSSMode) {
+        // 检查是否是新的RSS响应格式（包含解析后的文章内容）
+        if (data.results) {
+          // 新格式，直接使用结果
+          if (keepHistory && results) {
+            const existingUrls = new Set(results.results.map((r: CrawlResult) => r.url));
+            const newResults = data.results.filter((r: CrawlResult) => !existingUrls.has(r.url));
+            
+            const combinedResults = {
+              ...data,
+              totalProcessed: data.totalProcessed + results.totalProcessed,
+              successCount: results.successCount + newResults.length,
+              results: [...results.results, ...newResults],
+              errors: [...(results.errors || []), ...(data.errors || [])],
+            };
+            setResults(combinedResults);
+          } else {
+            setResults(data);
+          }
+        } else {
+          // 旧格式，需要转换
+          const rssData = data as RSSResponse;
+          
+          // 将RSS链接转换为与爬虫结果相同的格式
+          const convertedResults: CrawlResponse = {
+            results: rssData.links.map(link => ({
+              url: link.url,
+              article: {
+                title: link.title,
+                content: link.description || '',
+                byline: link.author,
+                excerpt: link.description
+              },
+              success: true
+            })),
+            totalProcessed: rssData.totalLinks,
+            successCount: rssData.returnedLinks
+          };
+          
+          if (keepHistory && results) {
+            const existingUrls = new Set(results.results.map((r: CrawlResult) => r.url));
+            const newResults = convertedResults.results.filter((r: CrawlResult) => !existingUrls.has(r.url));
+            
+            const combinedResults = {
+              ...convertedResults,
+              totalProcessed: convertedResults.totalProcessed + results.totalProcessed,
+              successCount: results.successCount + newResults.length,
+              results: [...results.results, ...newResults],
+              errors: [...(results.errors || []), ...(convertedResults.errors || [])],
+            };
+            setResults(combinedResults);
+          } else {
+            setResults(convertedResults);
+          }
+        }
       } else {
-        setResults(data);
+        // 处理普通爬虫模式的响应
+        if (keepHistory && results) {
+          const existingUrls = new Set(results.results.map((r: CrawlResult) => r.url));
+          const newResults = data.results.filter((r: CrawlResult) => !existingUrls.has(r.url));
+          
+          const combinedResults = {
+            ...data,
+            totalProcessed: data.totalProcessed + results.totalProcessed,
+            successCount: results.successCount + newResults.length,
+            results: [...results.results, ...newResults],
+            errors: [...(results.errors || []), ...(data.errors || [])],
+          };
+          setResults(combinedResults);
+        } else {
+          setResults(data);
+        }
       }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : '发生未知错误';
@@ -312,22 +399,22 @@ export function SiteCrawler() {
               </label>
             </div>
             
+            <div className="flex items-center space-x-2">
+              <label htmlFor="max-pages" className="text-sm">最大页数:</label>
+              <Input
+                id="max-pages"
+                type="number"
+                value={maxPages}
+                onChange={(e) => setMaxPages(parseInt(e.target.value))}
+                min="-1"
+                max="100"
+                className="w-20"
+              />
+              <span className="text-xs text-gray-500">(-1表示无限制)</span>
+            </div>
+            
             {!isRSSMode && (
               <>
-                <div className="flex items-center space-x-2">
-                  <label htmlFor="max-pages" className="text-sm">最大页数:</label>
-                  <Input
-                    id="max-pages"
-                    type="number"
-                    value={maxPages}
-                    onChange={(e) => setMaxPages(parseInt(e.target.value))}
-                    min="-1"
-                    max="100"
-                    className="w-20"
-                  />
-                  <span className="text-xs text-gray-500">(-1表示无限制)</span>
-                </div>
-                
                 <div className="flex items-center space-x-2">
                   <label htmlFor="max-depth" className="text-sm">最大深度:</label>
                   <Input
@@ -445,13 +532,6 @@ export function SiteCrawler() {
                     <div className="text-sm text-gray-500">
                       已选择: {selectedArticles.size}/{results.results.length}
                     </div>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={toggleSelectAll}
-                    >
-                      {selectedArticles.size === results.results.length ? '取消全选' : '全选'}
-                    </Button>
                     <Button
                       variant="outline"
                       size="sm"

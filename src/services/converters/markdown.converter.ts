@@ -5,6 +5,32 @@ import { BaseConverter } from './base.converter';
 import { ExportErrorCode } from '@/core/errors/export.error';
 
 export class MarkdownConverter extends BaseConverter {
+  // 从Markdown图片链接中提取URL，检查是否有效
+  private isValidMarkdownImage(mdText: string): boolean {
+    if (!mdText) return false;
+    const match = mdText.match(/!\[.*?\]\((.*?)\)/);
+    if (match && match[1]) return true;
+    
+    // 尝试匹配没有alt文本的格式 ![]()
+    const simpleMatch = mdText.match(/!\[\]\((.*?)\)/);
+    if (simpleMatch && simpleMatch[1]) return true;
+    
+    return false;
+  }
+
+  // 从Markdown图片链接中提取URL
+  private extractImageUrl(mdText: string): string | undefined {
+    if (!mdText) return undefined;
+    const match = mdText.match(/!\[.*?\]\((.*?)\)/);
+    if (match && match[1]) return match[1];
+    
+    // 尝试匹配没有alt文本的格式 ![]()
+    const simpleMatch = mdText.match(/!\[\]\((.*?)\)/);
+    if (simpleMatch && simpleMatch[1]) return simpleMatch[1];
+    
+    return undefined;
+  }
+
   async convert(content: Content, {}: ConvertOptions = {}): Promise<Buffer> {
     try {
       const timestamp = Date.now();
@@ -12,6 +38,12 @@ export class MarkdownConverter extends BaseConverter {
       
       // 生成目录文件
       let indexContent = `# ${content.title}\n\n`;
+      
+      // 添加封面图片（如果有）
+      if (content.coverImage && this.isValidMarkdownImage(content.coverImage)) {
+        indexContent += `${content.coverImage}\n\n`;
+      }
+      
       if (content.author) {
         indexContent += `作者：${content.author}\n\n`;
       }
@@ -22,7 +54,7 @@ export class MarkdownConverter extends BaseConverter {
       indexContent += `共收录 ${content.contents.length} 篇文章\n\n`;
       indexContent += `## 目录\n\n`;
       indexContent += content.contents.map((article, index) => 
-        `- [${article.title}](${timestamp}_article_${index}.md) - [原文](${article.url})`
+        `- [${article.title}](${timestamp}_article_${index}.md)`
       ).join('\n');
       
       zip.file('index.md', indexContent);
@@ -49,8 +81,6 @@ ${article.content}
 ---
 
 ${navigation.join(' | ')}
-
-> 原文链接：[${article.url}](${article.url})
 `;
         
         zip.file(`${timestamp}_article_${index}.md`, articleContent);

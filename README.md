@@ -7,6 +7,7 @@ WePub 是一个基于 Next.js 构建的现代网页内容阅读优化工具。�
 * [博客文章](https://www.jiajiewu.top/blog/wepub-covert-web-to-book)
 
 ## TODO
+- [ ] 支持RSS源抓取。
 - [ ] 微信公众号内容爬取。
 - [ ] 支持外文网站在导出前先翻译为目标语言。
 

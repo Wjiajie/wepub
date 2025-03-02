@@ -53,13 +53,13 @@ export function ExportDialog({ open, onOpenChange, onExport, isExporting }: Expo
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[500px]">
+      <DialogContent className="sm:max-w-[500px] max-h-[90vh] flex flex-col">
         <DialogHeader>
           <DialogTitle className="text-xl font-semibold">
             导出文档 <span className="text-xs text-gray-500 font-normal">(支持Markdown格式)</span>
           </DialogTitle>
         </DialogHeader>
-        <div className="space-y-6 py-4">
+        <div className="space-y-6 py-4 overflow-y-auto flex-grow">
           <div className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="title" className="text-sm font-medium">
@@ -76,7 +76,7 @@ export function ExportDialog({ open, onOpenChange, onExport, isExporting }: Expo
                 <div className="mt-2 p-2 border rounded-md bg-gray-50">
                   <div className="text-xs text-gray-500 mb-1">预览:</div>
                   <div 
-                    className="prose prose-sm max-w-none max-h-[100px] overflow-y-auto" 
+                    className="prose prose-sm max-w-none max-h-[80px] overflow-y-auto" 
                     dangerouslySetInnerHTML={{ __html: renderMarkdown(title) }}
                   />
                 </div>
@@ -98,7 +98,7 @@ export function ExportDialog({ open, onOpenChange, onExport, isExporting }: Expo
                 <div className="mt-2 p-2 border rounded-md bg-gray-50">
                   <div className="text-xs text-gray-500 mb-1">预览:</div>
                   <div 
-                    className="prose prose-sm max-w-none max-h-[100px] overflow-y-auto" 
+                    className="prose prose-sm max-w-none max-h-[80px] overflow-y-auto" 
                     dangerouslySetInnerHTML={{ __html: renderMarkdown(author) }}
                   />
                 </div>
@@ -113,14 +113,14 @@ export function ExportDialog({ open, onOpenChange, onExport, isExporting }: Expo
                 id="description"
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                className="w-full min-h-[100px] px-3 py-2 text-sm rounded-md border border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                className="w-full min-h-[80px] px-3 py-2 text-sm rounded-md border border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                 placeholder="请输入更多说明信息（可选）..."
               />
               {description && showPreview && (
                 <div className="mt-2 p-2 border rounded-md bg-gray-50">
                   <div className="text-xs text-gray-500 mb-1">预览:</div>
                   <div 
-                    className="prose prose-sm max-w-none max-h-[150px] overflow-y-auto" 
+                    className="prose prose-sm max-w-none max-h-[100px] overflow-y-auto" 
                     dangerouslySetInnerHTML={{ __html: renderMarkdown(description) }}
                   />
                 </div>
@@ -165,7 +165,7 @@ export function ExportDialog({ open, onOpenChange, onExport, isExporting }: Expo
             </div>
           </div>
         </div>
-        <DialogFooter>
+        <DialogFooter className="flex-shrink-0 pt-2">
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isExporting}>
             取消
           </Button>
